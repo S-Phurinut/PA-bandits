@@ -1,0 +1,5 @@
+_target_ : Reward_generator.Participation_based_Reward
+type_dist : Bernoulli
+mean_prob : [0.495,0.496,0.497,0.498,0.499,0.50,0.499,0.498,0.497,0.496,0.495] 
+success_value : 1
+name: max050_gap0001_mid_11arm

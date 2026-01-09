@@ -1,0 +1,5 @@
+_target_ : MABA_model.MABA_model
+num_agent : 10
+agent_cost : [0.01,0.01,0.01,0.01,0.01,0.01,0.01,0.01,0.01,0.01]
+type : pre-defined
+init_seed_id : 0

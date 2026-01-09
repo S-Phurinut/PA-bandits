@@ -1,0 +1,5 @@
+_target_ : Reward_generator.Participation_based_Reward
+type_dist : Bernoulli
+mean_prob : [0.05,0.2,0.35,0.50,0.60,0.70,0.80,0.85,0.90,0.85] 
+success_value : 1
+name: max090_cave005_rear_10arm

@@ -1,0 +1,10 @@
+_target_ : policy.IPA_full.IPA_full
+type_arm : participation-based
+num_cost_learning : log2T
+cost_alg : MultiBinSearch
+bandit_alg: TS #UCB-lattimore
+bandit_alg_paras : null #for KL_UCB
+name : IPA-full
+is_cost_known : False
+min_sample_required : 0
+# prior : ['beta',['linear',1,2],['fixed',1]]

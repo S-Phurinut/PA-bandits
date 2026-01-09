@@ -1,0 +1,7 @@
+_target_ : policy.linIPA_full.linIPA_full
+type_arm : participation-based
+num_cost_learning : log2T
+cost_alg : MultiBinSearch
+bandit_alg: UCB-lattimore
+name : linIPA-full
+is_cost_known : False

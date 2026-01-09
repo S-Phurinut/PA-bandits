@@ -1,0 +1,6 @@
+_target_ : policy.UCB_MCLS.UCB_Monotone_Concave_LeastSquare
+type_arm : participation-based
+num_cost_learning : log2T
+cost_alg : MultiBinSearch
+name : UCB-MCLS
+is_cost_known : False

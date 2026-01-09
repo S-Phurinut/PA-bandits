@@ -1,0 +1,7 @@
+_target_ : policy.IPA.IPA
+type_arm : participation-based
+num_cost_learning : log2T
+cost_alg : MultiBinSearch
+bandit_alg: UCB-lattimore
+name : IPA
+is_cost_known : False

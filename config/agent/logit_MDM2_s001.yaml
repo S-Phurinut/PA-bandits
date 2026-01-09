@@ -1,0 +1,5 @@
+_target_ : agent.logit.Logit
+num_agent : 2 
+name : logit
+para_loc: [0.3,0.4]
+para_shape : 0.01

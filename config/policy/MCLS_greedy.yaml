@@ -1,0 +1,7 @@
+_target_ : policy.MCLS_greedy.Monotone_Concave_LeastSquare_greedy
+type_arm : participation-based
+num_cost_learning : log2T
+cost_alg : MultiBinSearch
+name : MCLS-greedy
+constraint_model : increasing
+is_cost_known : False

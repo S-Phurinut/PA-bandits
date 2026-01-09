@@ -1,0 +1,12 @@
+_target_ : policy.MCLS_UTS.Monotone_Concave_LeastSquare_UnimodalTS
+type_arm : participation-based
+num_cost_learning : log2T
+cost_alg : MultiBinSearch
+name : MCLS-UTS
+
+constraint_model : increasing
+refit_step :  "adaptive-log10" #---> refit in every log10(round)-constant [1,10,100,1000]
+refit_step_constant : 2
+max_round_1step : 5000
+is_cost_known : True
+min_sample_required : 1

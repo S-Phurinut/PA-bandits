@@ -1,0 +1,8 @@
+_target_ : policy.mincost.Mincost
+type_arm : participation-based
+max_num_cost_learning : log2T
+bandit_alg: TS
+bandit_alg_paras : null #for KL_UCB
+name : mincost
+is_cost_known : False
+min_sample_required : 0

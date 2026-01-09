@@ -1,0 +1,20 @@
+_target_ : policy.BayesBerReg_UTS.Bayesian_Bernoulli_Regression_UnimodalTS
+type_arm : participation-based
+num_cost_learning : log2T
+cost_alg : MultiBinSearch
+name : BayesBerReg-UTS
+is_cost_known : False
+refit_step :  "adaptive-log10" #---> refit in every log10(round)-1 [1,10,100,1000]
+max_round_1step : 50
+
+model_name : Bayesian-Bernoulli-Regression
+bandit_alg : UTS
+constraint_model : increasing-concave
+likelihood_model : cdf-exp
+
+#For pymc packages
+pymc_draws : 500
+pymc_tune : 100
+pymc_target_accept : 0.9
+pymc_cores : 1
+pymc_chains : 4

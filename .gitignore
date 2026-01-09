@@ -1,0 +1,12 @@
+wandb/
+outputs/
+.DS_Store*
+**/__pycache__
+.ipynb*
+**.csv
+**.png
+**.pdf
+notebook/
+wandb-env/
+long_**
+pymc_env

@@ -1,0 +1,6 @@
+_target_ : policy.Sigmoid_greedy.Sigmoid_greedy
+type_arm : participation-based
+num_cost_learning : log2T
+cost_alg : MultiBinSearch
+name : Sigmoid-greedy
+is_cost_known : False

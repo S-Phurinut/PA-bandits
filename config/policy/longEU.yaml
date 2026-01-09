@@ -1,0 +1,7 @@
+_target_ : policy.longEU.longEU
+type_arm : participation-based
+est_reward: TS #UCB-lattimore
+name : longEU
+is_cost_known : False
+num_optimiser : 16
+prior : null #['beta',['fixed',3],['fixed',1]] #['beta',['linear',1,2],['fixed',1]]

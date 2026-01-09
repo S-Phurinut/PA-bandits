@@ -1,0 +1,7 @@
+_target_ : Reward_generator.Participation_based_Reward
+type_dist : Bernoulli
+mean_prob : bounded-log
+success_value : 1
+base : null
+log_constant : 1
+curve_constant : 1
