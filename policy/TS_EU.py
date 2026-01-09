@@ -1,7 +1,17 @@
 import numpy as np
+import scipy.signal
+import scipy.signal.windows
+
+# Patch older import name for PyMC compatibility
+if not hasattr(scipy.signal, "gaussian"):
+    scipy.signal.gaussian = scipy.signal.windows.gaussian
+import pymc as pm
+import pytensor.tensor as pt
+
 import scipy as sc
 import math
 from poibin import PoiBin
+
 
 class TS_EU(): #EU with agent approx model
     def __init__(self,type_arm,**alg):
@@ -62,18 +72,30 @@ class TS_EU(): #EU with agent approx model
                     self.alpha=np.ones((self.player.num_agent,))*1
                     self.beta=np.ones((self.player.num_agent,))
 
+            elif self.alg['est_reward']=="increasing-TS" or self.alg['est_reward']=="concave-TS":
+                self.input=[]
+                self.output=[]
+
             
         else:
             self.reset=False
             #----------Update agent model learning----------
             if info['curr_round']>1 and self.is_model_known==False:
-                if self.alg['model_training_appr']=='T':
-                    self.alg['model'].fit(X=self.player.incentive_array[:(info['curr_round']-1),:],Y=self.player.agent_response_array[:(info['curr_round']-1),:])
-                elif self.alg['model_training_appr']==1 and self.is_model_training_done==False : #and self.is_cost_learning_done==True:
-                    self.alg['model'].fit(X=self.player.incentive_array[:(info['curr_round']-1),:],Y=self.player.agent_response_array[:(info['curr_round']-1),:])
-                    if info['curr_round']==self.num_cost_learning:
-                        print("logit model_para=",self.alg['model'].para_loc,self.alg['model'].para_shape)
-                        self.is_model_training_done=True
+                train_model=False
+                if type(self.alg['model_training_appr'])==int:
+                    if info['curr_round']-1%self.alg['model_training_appr']==0:
+                        train_model=True
+                else:
+                    if self.alg['model_training_appr']=='once' and self.is_model_training_done==False : #and self.is_cost_learning_done==True:
+                        train_model=True
+
+                if train_model:
+                     self.alg['model'].fit(X=self.player.incentive_array[:(info['curr_round']-1),:],Y=self.player.agent_response_array[:(info['curr_round']-1),:])
+
+                if info['curr_round']==self.num_cost_learning:
+                    print("logit model_para=",self.alg['model'].para_loc,self.alg['model'].para_shape)
+                    self.is_model_training_done=True
+
 
             #-----------Update Reward Data---------
             n=np.sum(info['previous_agent_response'])-1
@@ -86,6 +108,10 @@ class TS_EU(): #EU with agent approx model
                         self.alpha[n]+=1
                     else:
                         self.beta[n]+=1
+
+                elif self.alg['est_reward']=="increasing-TS" or self.alg['est_reward']=="concave-TS":
+                    self.input.append(n+1)
+                    self.output.append(info['previous_reward'])
 
         if info['curr_round']<=self.num_cost_learning:
             if info['curr_round']==self.num_cost_learning:
@@ -114,6 +140,26 @@ class TS_EU(): #EU with agent approx model
                         est_reward=self.TS_value()
                     elif self.alg['est_reward']=='posterior-mean':
                         est_reward=self.alpha/(self.alpha+self.beta)
+                    elif self.alg['est_reward']=='increasing-TS':
+                        refit_model=True
+                        if self.alg['refit_step']=="adaptive-log10":
+                            refit_step=max(int(10**(math.floor(np.log10(info['curr_round']))-1)),1)
+                            if info['curr_round']%refit_step==0  or info['curr_round']<=self.alg['max_round_1step'] :
+                                refit_model=True
+                            else:
+                                refit_model=False
+                        est_reward=self.structured_TS_value(type='increasing',refit_model=refit_model)
+                    elif self.alg['est_reward']=='concave-TS':
+                        refit_model=True
+                        if self.alg['refit_step']=="adaptive-log10":
+                            refit_step=max(int(10**(math.floor(np.log10(info['curr_round']))-1)),1)
+                            if info['curr_round']%refit_step==0  or info['curr_round']<=self.alg['max_round_1step'] :
+                                refit_model=True
+                            else:
+                                refit_model=False
+                                
+                        est_reward=self.structured_TS_value(type='increasing-concave',refit_model=refit_model)
+
 
                 eps = 0 #float(1E-1)
                 bnds = [(float(0 - eps), float(1 + eps)) for _ in range(self.player.num_agent)]
@@ -198,6 +244,33 @@ class TS_EU(): #EU with agent approx model
             sample = np.random.beta(self.alpha[n], self.beta[n])
             sampled_thetas.append(sample)
         return np.array(sampled_thetas)
+    
+    def structured_TS_value(self,type='increasing',refit_model=True):
+        M = np.zeros((self.player.num_agent+1, self.player.num_agent+1), dtype=np.float64)  # exclude first arm
+        for k in range(0, self.player.num_agent+1):
+            for j in range(self.player.num_agent+1):
+                if type=="increasing":
+                    if k>=j:
+                        M[k, j] = 1
+                elif type=="increasing-concave":
+                    M[k, j] = min(k+1,j+1)
+
+        if refit_model:
+            with pm.Model() as m:
+                if self.alg['likelihood_model']== "cdf-exp":
+                    w = pm.Uniform("w",lower=0, upper= 10, shape=self.player.num_agent+1)
+                    # Latent concave function
+                    f_all = pt.dot(pt.as_tensor_variable(M, dtype="float64"), w)
+                    # Hazard-style link for flexible probabilities
+                    p_all = pm.Deterministic("p_all", 1 - pm.math.exp(-f_all))
+                    y = pm.Bernoulli("y", p=p_all[self.input], observed=self.output)
+
+                    self.trace = pm.sample(draws=self.alg['pymc_draws'], tune=self.alg['pymc_tune'], target_accept=self.alg['pymc_target_accept'],
+                                                    initvals={"w": np.full(self.player.num_agent+1, 0.01)}, cores=self.alg['pymc_cores'],chains=self.alg['pymc_chains'])
+        self.p_samples = self.trace.posterior["p_all"].stack(draws=("chain","draw")).values
+        p_all=self.p_samples[:,np.random.randint(0,self.p_samples.shape[1])][1:]
+
+        return np.array(p_all)
     
     def D_optimal(self):
         if self.reset:

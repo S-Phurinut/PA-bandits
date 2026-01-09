@@ -88,6 +88,8 @@ class gEU(): #EU with agent approx model
                 else:
                     if self.alg['model_training_appr']=='once' and self.is_model_training_done==False : #and self.is_cost_learning_done==True:
                         train_model=True
+                    elif self.alg['model_training_appr']=='T':
+                        train_model=True
 
                 if train_model:
                      self.alg['model'].fit(X=self.player.incentive_array[:(info['curr_round']-1),:],Y=self.player.agent_response_array[:(info['curr_round']-1),:])
@@ -108,9 +110,9 @@ class gEU(): #EU with agent approx model
                     else:
                         self.beta[n]+=1
                 
-            elif self.alg['est_reward']=="increasing-TS" or self.alg['est_reward']=="concave-TS":
-                self.input.append(n+1)
-                self.output.append(info['previous_reward'])
+                elif self.alg['est_reward']=="increasing-TS" or self.alg['est_reward']=="concave-TS":
+                    self.input.append(n+1)
+                    self.output.append(info['previous_reward'])
 
         if info['curr_round']<=self.num_cost_learning:
             if info['curr_round']==self.num_cost_learning:
