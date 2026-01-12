@@ -122,7 +122,13 @@ class Bayesian_Bernoulli_Regression_UnimodalTS():
                                 f_all = pt.dot(pt.as_tensor_variable(self.X, dtype="float64"), w)
                                 # Hazard-style link for flexible probabilities
                                 p_all = pm.Deterministic("p_all", 1 - pm.math.exp(-f_all))
-                           
+                            elif self.bandit_alg['likelihood_model']== "0/1-bounded":
+                                # Bounded positive weights
+                                w = pm.Uniform("w",lower=0, upper= 10, shape=self.N+1)
+                                # Latent concave function
+                                f_all = pt.dot(pt.as_tensor_variable(self.X, dtype="float64"), w)
+                                # Hazard-style link for flexible probabilities
+                                p_all = pm.Deterministic("p_all", pm.math.minimum(pt.ones(self.N+1),f_all))
                            
                             # Likelihood
                             y = pm.Bernoulli("y", p=p_all[self.input], observed=self.output)

@@ -40,7 +40,7 @@ class IPA_full():
             elif self.num_cost_learning=='T':
                 self.num_cost_learning=int(info['max_round'])
 
-            if self.bandit_alg['bandit_alg']=='TS' or self.bandit_alg['bandit_alg']=='UTS' and self.type_arm=='participation-based':
+            if self.bandit_alg['bandit_alg']=='TS' or self.bandit_alg['bandit_alg']=='UTS' or self.bandit_alg['bandit_alg']=='incTS' or self.bandit_alg['bandit_alg']=='concaveTS' and self.type_arm=='participation-based':
                 if 'prior' in self.bandit_alg:
                     if self.bandit_alg['prior'] is not None:
                         if self.bandit_alg['prior'][0]=='beta':
@@ -71,7 +71,7 @@ class IPA_full():
                 self.num_reward[n]+=1
                 self.est_reward[n]= self.sum_reward[n]/self.num_reward[n]
 
-                if self.bandit_alg['bandit_alg']=='TS' or self.bandit_alg['bandit_alg']=='UTS' :
+                if self.bandit_alg['bandit_alg']=='TS' or self.bandit_alg['bandit_alg']=='UTS' or self.bandit_alg['bandit_alg']=='incTS' or self.bandit_alg['bandit_alg']=='concaveTS' :
                     if info['previous_reward']>0:
                         self.alpha[n]+=1
                     else:
@@ -117,7 +117,6 @@ class IPA_full():
                     self.cum_cost=np.cumsum(sorted_cost)
                     print("start bandit alg")
                     print("best_estimated_cost=",self.cum_cost)
-
                 #---------------bandit alg-----------------
                 if np.sum(self.num_reward<self.bandit_alg['min_sample_required'])>0:
                     pulled_arm=np.argmin(self.num_reward)
@@ -128,6 +127,10 @@ class IPA_full():
                         pulled_arm=self.UCB1_subroutine(info['curr_round'])
                     elif self.bandit_alg['bandit_alg']=='TS':
                         pulled_arm=self.TS_subroutine()
+                    elif self.bandit_alg['bandit_alg']=='incTS':
+                        pulled_arm=self.incTS_subroutine(max_resampling_inc=self.bandit_alg['max_resampling_inc'])
+                    elif self.bandit_alg['bandit_alg']=='concaveTS':
+                        pulled_arm=self.concaveTS_subroutine(max_resampling_inc=self.bandit_alg['max_resampling_inc'],max_resampling_concave=self.bandit_alg['max_resampling_concave'])
                     elif self.bandit_alg['bandit_alg']=='UTS':
                         pulled_arm=self.UnimodalTS_subroutine()
                     elif self.bandit_alg['bandit_alg']=='OSUB':
@@ -193,6 +196,61 @@ class IPA_full():
             sample = np.random.beta(self.alpha[n], self.beta[n])-self.cum_cost[n]
             sampled_thetas.append(sample)
         best_arm=np.argmax(sampled_thetas)
+        return best_arm
+    
+
+    def incTS_subroutine(self,max_resampling_inc=1E7):
+        if max_resampling_inc is None: max_resampling_inc=1E7
+        resampling=True
+        count_inc=-1
+        while resampling:
+            count_inc+-1
+            sampled_thetas = []
+            for n in range(self.player.num_agent):
+                # Draw a sample from the Beta(alpha_i, beta_i) distribution
+                sample = np.random.beta(self.alpha[n], self.beta[n])
+                
+                if n>0 and sample<sampled_thetas[-1] and count_inc<=max_resampling_inc: #if reward is not incresing, restart
+                    resampling=True
+                    break
+                else:
+                    resampling=False
+                
+                sampled_thetas.append(sample)
+
+        best_arm=np.argmax(sampled_thetas-self.cum_cost)
+        return best_arm
+    
+    def concaveTS_subroutine(self,max_resampling_inc=1E7,max_resampling_concave=1E6):
+        if max_resampling_inc is None: max_resampling_inc=1E7
+        if max_resampling_concave is None: max_resampling_concave=1E6
+        resampling=True
+        count_inc=-1
+        count_cave=-1
+        while resampling:
+            count_inc+=1
+            count_cave+=1
+            sampled_thetas = []
+            for n in range(self.player.num_agent):
+                # Draw a sample from the Beta(alpha_i, beta_i) distribution
+                sample = np.random.beta(self.alpha[n], self.beta[n])
+                
+                if n>0 and sample<sampled_thetas[-1] and count_inc<=max_resampling_inc: #if reward is not incresing, restart
+                    resampling=True
+                    break
+                else:
+                    if n>1 and sampled_thetas[-1]-sampled_thetas[-2]<sample-sampled_thetas[-1] and count_cave<=max_resampling_concave:  #if slope of reward is not decreasing, restart
+                        resampling=True
+                        break
+                    elif n==1 and sampled_thetas[-1]<sample-sampled_thetas[-1] and count_cave<=max_resampling_concave:
+                        resampling=True
+                        break
+                    else:
+                        resampling=False
+                
+                sampled_thetas.append(sample)
+
+        best_arm=np.argmax(sampled_thetas-self.cum_cost)
         return best_arm
     
     def UnimodalTS_subroutine(self):

@@ -9,3 +9,4 @@ is_reward_known : False
 model_training_appr : T
 is_model_known : False #True
 prior : null #['beta',['fixed',3],['fixed',1]] #['beta',['linear',1,2],['fixed',1]]s
+max_resampling_inc : null

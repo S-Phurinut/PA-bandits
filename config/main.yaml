@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - setting : MABA_10hlc2
+  - setting : MABA_10lc2
   - policy : IPA_full #longEU
   - reward_generator : bernoulli_mono_logistic #bounded_log #mono_logistic
 num_sim : 100

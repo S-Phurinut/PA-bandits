@@ -2,7 +2,7 @@ _target_ : policy.TS_EU.TS_EU
 type_arm : participation-based
 num_cost_learning : 0
 cost_alg : null #D-optimal #uniformly-space #null
-est_reward: increasing-TS #UCB-lattimore
+est_reward: incTS #UCB-lattimore
 name : gEU
 num_optimiser : 16
 is_reward_known : False
@@ -10,11 +10,11 @@ model_training_appr : T
 is_model_known : False #True
 prior : null #['beta',['fixed',3],['fixed',1]] #['beta',['linear',1,2],['fixed',1]]s
 
-refit_step: 1
-likelihood_model : cdf-exp
-#For pymc packages
-pymc_draws : 500
-pymc_tune : 100
-pymc_target_accept : 0.9
-pymc_cores : 1
-pymc_chains : 4
+# refit_step: 1
+# likelihood_model : cdf-exp
+# #For pymc packages
+# pymc_draws : 500
+# pymc_tune : 100
+# pymc_target_accept : 0.9
+# pymc_cores : 1
+# pymc_chains : 4
