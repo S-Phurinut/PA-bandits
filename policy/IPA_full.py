@@ -13,6 +13,11 @@ class IPA_full():
             self.is_cost_known=bandit_alg['is_cost_known']
         else:
             self.is_cost_known=False
+        
+        if 'is_reward_known' in bandit_alg:
+            self.is_reward_known=bandit_alg['is_reward_known']
+        else:
+            self.is_reward_known=False
     
         self.reset=True
 
@@ -40,7 +45,7 @@ class IPA_full():
             elif self.num_cost_learning=='T':
                 self.num_cost_learning=int(info['max_round'])
 
-            if self.bandit_alg['bandit_alg']=='TS' or self.bandit_alg['bandit_alg']=='UTS' or self.bandit_alg['bandit_alg']=='incTS' or self.bandit_alg['bandit_alg']=='concaveTS' and self.type_arm=='participation-based':
+            if self.bandit_alg['bandit_alg']=='TS' or self.bandit_alg['bandit_alg']=='UTS'  or self.bandit_alg['bandit_alg']=='incUTS' or self.bandit_alg['bandit_alg']=='concaveUTS'  or self.bandit_alg['bandit_alg']=='incTS' or self.bandit_alg['bandit_alg']=='concaveTS' and self.type_arm=='participation-based':
                 if 'prior' in self.bandit_alg:
                     if self.bandit_alg['prior'] is not None:
                         if self.bandit_alg['prior'][0]=='beta':
@@ -52,7 +57,7 @@ class IPA_full():
                 
                 self.est_reward=self.alpha/(self.alpha+self.beta)
 
-            if self.bandit_alg['bandit_alg']=='UTS' or self.bandit_alg['bandit_alg']=='OSUB':
+            if self.bandit_alg['bandit_alg']=='UTS'  or self.bandit_alg['bandit_alg']=='incUTS' or self.bandit_alg['bandit_alg']=='concaveUTS'  or self.bandit_alg['bandit_alg']=='OSUB':
                 self.num_leader_count=np.zeros((self.player.num_agent,))
 
             self.reset=False
@@ -71,7 +76,7 @@ class IPA_full():
                 self.num_reward[n]+=1
                 self.est_reward[n]= self.sum_reward[n]/self.num_reward[n]
 
-                if self.bandit_alg['bandit_alg']=='TS' or self.bandit_alg['bandit_alg']=='UTS' or self.bandit_alg['bandit_alg']=='incTS' or self.bandit_alg['bandit_alg']=='concaveTS' :
+                if self.bandit_alg['bandit_alg']=='TS' or self.bandit_alg['bandit_alg']=='UTS'  or self.bandit_alg['bandit_alg']=='incUTS' or self.bandit_alg['bandit_alg']=='concaveUTS'  or self.bandit_alg['bandit_alg']=='incTS' or self.bandit_alg['bandit_alg']=='concaveTS' :
                     if info['previous_reward']>0:
                         self.alpha[n]+=1
                     else:
@@ -121,6 +126,9 @@ class IPA_full():
                 if np.sum(self.num_reward<self.bandit_alg['min_sample_required'])>0:
                     pulled_arm=np.argmin(self.num_reward)
                 else:
+                    if self.is_reward_known:
+                        self.est_reward=np.array(self.player.reward_generator.mean)
+       
                     if self.bandit_alg['bandit_alg']=='UCB-lattimore':
                         pulled_arm=self.UCBlat_subroutine(info['max_round'])
                     elif self.bandit_alg['bandit_alg']=='UCB1':
@@ -133,10 +141,16 @@ class IPA_full():
                         pulled_arm=self.concaveTS_subroutine(max_resampling_inc=self.bandit_alg['max_resampling_inc'],max_resampling_concave=self.bandit_alg['max_resampling_concave'])
                     elif self.bandit_alg['bandit_alg']=='UTS':
                         pulled_arm=self.UnimodalTS_subroutine()
+                    elif self.bandit_alg['bandit_alg']=='incUTS':
+                        pulled_arm=self.incUnimodalTS_subroutine(max_resampling_inc=self.bandit_alg['max_resampling_inc'])
+                    elif self.bandit_alg['bandit_alg']=='concaveUTS':
+                        pulled_arm=self.concaveUnimodalTS_subroutine(max_resampling_inc=self.bandit_alg['max_resampling_inc'],max_resampling_concave=self.bandit_alg['max_resampling_concave'])
                     elif self.bandit_alg['bandit_alg']=='OSUB':
                         pulled_arm=self.OSUB_subroutine(curr_round=info['curr_round'])
                     elif self.bandit_alg['bandit_alg']=='IMED-UB':
                         pulled_arm=self.IMED_UB_subroutine()
+                    elif self.bandit_alg['bandit_alg']=='greedy':
+                        pulled_arm=int(np.argmax(self.est_reward-self.cum_cost))
                         
                 # print("At round=",info['curr_round']," pull arm=",pulled_arm)
                 if info['curr_round']%1000==0: print("num reward=",self.num_reward)
@@ -204,7 +218,7 @@ class IPA_full():
         resampling=True
         count_inc=-1
         while resampling:
-            count_inc+-1
+            count_inc+=1
             sampled_thetas = []
             for n in range(self.player.num_agent):
                 # Draw a sample from the Beta(alpha_i, beta_i) distribution
@@ -285,6 +299,115 @@ class IPA_full():
                 # Draw a sample from the Beta(alpha_i, beta_i) distribution
                 sample = np.random.beta(self.alpha[n], self.beta[n])-self.cum_cost[n]
                 sampled_thetas.append(sample)
+            id_best_arm=np.argmax(sampled_thetas)
+            best_arm=neighbor_arm[id_best_arm]
+
+        self.num_leader_count[leader_arm]+=1
+        return best_arm
+    
+    def incUnimodalTS_subroutine(self,max_resampling_inc=1E7):
+        est_mean_reward=self.sum_reward/self.num_reward-self.cum_cost
+        leader_arm=0
+        best_mean=-math.inf
+        num0_list=[]
+        for arm in range(est_mean_reward.shape[0]):
+            if self.num_reward[arm]==0:
+                est_mean_reward[arm]=0
+                num0_list.append(arm)
+            
+            if est_mean_reward[arm]>best_mean:
+                best_mean=est_mean_reward[arm]
+                leader_arm=arm
+        
+        if best_mean<=0 and len(num0_list)>0:
+            leader_arm=int(np.random.choice(num0_list))
+        
+        if leader_arm==0:
+            neighbor_arm=[leader_arm,1]
+        elif leader_arm==self.player.num_agent-1:
+            neighbor_arm=[leader_arm-1,leader_arm]
+        else:
+            neighbor_arm=[leader_arm-1,leader_arm,leader_arm+1]
+
+        if self.num_leader_count[leader_arm] % len(neighbor_arm)==0:
+            best_arm=int(leader_arm)
+        else:  
+            if max_resampling_inc is None: max_resampling_inc=1E7
+            resampling=True
+            count_inc=-1
+            while resampling:
+                count_inc+-1
+                sampled_thetas = []
+                for n in neighbor_arm:
+                    # Draw a sample from the Beta(alpha_i, beta_i) distribution
+                    sample = np.random.beta(self.alpha[n], self.beta[n])
+                    
+                    if len(sampled_thetas)>0 and sample<sampled_thetas[-1] and count_inc<=max_resampling_inc: #if reward is not incresing, restart
+                        resampling=True
+                        break
+                    else:
+                        resampling=False
+                    
+                    sampled_thetas.append(sample-self.cum_cost[n])
+
+            id_best_arm=np.argmax(sampled_thetas)
+            best_arm=neighbor_arm[id_best_arm]
+
+        self.num_leader_count[leader_arm]+=1
+        return best_arm
+    
+    def concaveUnimodalTS_subroutine(self,max_resampling_inc=1E7,max_resampling_concave=1E6):
+        est_mean_reward=self.sum_reward/self.num_reward-self.cum_cost
+        leader_arm=0
+        best_mean=-math.inf
+        num0_list=[]
+        for arm in range(est_mean_reward.shape[0]):
+            if self.num_reward[arm]==0:
+                est_mean_reward[arm]=0
+                num0_list.append(arm)
+            
+            if est_mean_reward[arm]>best_mean:
+                best_mean=est_mean_reward[arm]
+                leader_arm=arm
+        
+        if best_mean<=0 and len(num0_list)>0:
+            leader_arm=int(np.random.choice(num0_list))
+        
+        if leader_arm==0:
+            neighbor_arm=[leader_arm,1]
+        elif leader_arm==self.player.num_agent-1:
+            neighbor_arm=[leader_arm-1,leader_arm]
+        else:
+            neighbor_arm=[leader_arm-1,leader_arm,leader_arm+1]
+
+        if self.num_leader_count[leader_arm] % len(neighbor_arm)==0:
+            best_arm=int(leader_arm)
+        else:  
+            if max_resampling_inc is None: max_resampling_inc=1E7
+            if max_resampling_concave is None: max_resampling_concave=1E6
+            resampling=True
+            count_inc=-1
+            count_cave=-1
+            while resampling:
+                count_inc+=1
+                count_cave+=1
+                sampled_thetas = []
+                for n in neighbor_arm:
+                    # Draw a sample from the Beta(alpha_i, beta_i) distribution
+                    sample = np.random.beta(self.alpha[n], self.beta[n])
+                    
+                    if len(sampled_thetas)>0 and sample<sampled_thetas[-1] and count_inc<=max_resampling_inc: #if reward is not incresing, restart
+                        resampling=True
+                        break
+                    else:
+                        if len(sampled_thetas)>1 and sampled_thetas[-1]-sampled_thetas[-2]<sample-sampled_thetas[-1] and count_cave<=max_resampling_concave:  #if slope of reward is not decreasing, restart
+                            resampling=True
+                            break
+                        else:
+                            resampling=False
+                        
+                    sampled_thetas.append(sample-self.cum_cost[n])
+
             id_best_arm=np.argmax(sampled_thetas)
             best_arm=neighbor_arm[id_best_arm]
 

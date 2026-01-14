@@ -1,0 +1,8 @@
+defaults:
+  - _self_
+  - setting : MABA_10lc4 #MABA_5lc2 #MABA_5pl2 #MABA_5lc2 #MABA_10lc3
+  - policy : IPA_full #longEU
+  - reward_generator : bernoulli_2modal #6 #bernoulli_2modal5 #bernoulli_mono_logistic
+num_sim : 100
+max_round : 10000
+wandb_mode : online

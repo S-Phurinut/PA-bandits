@@ -34,7 +34,10 @@ class MABA_model():
             
             incentive_array[t,:]=incentive
             agent_response_array[t,:]=agent_response
-            reward,cost=self.reward_generator.get_reward(incentive=incentive,agent_action=agent_response)
+            if self.policy.is_reward_known:
+                reward,cost=self.reward_generator.get_true_mean(incentive=incentive,agent_action=agent_response)
+            else:
+                reward,cost=self.reward_generator.get_reward(incentive=incentive,agent_action=agent_response)
             reward_array[t]=reward-cost
 
             best_incentive=self.policy.best_incentive

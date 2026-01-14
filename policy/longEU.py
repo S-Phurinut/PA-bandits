@@ -8,6 +8,12 @@ class longEU():
         self.type_arm=type_arm
         self.bandit_alg=bandit_alg
 
+        if 'is_reward_known' in bandit_alg:
+            self.is_reward_known=bandit_alg['is_reward_known']
+        else:
+            self.is_reward_known=False
+
+
         if 'is_cost_known' in bandit_alg:
             self.is_cost_known=bandit_alg['is_cost_known']
         else:
@@ -77,14 +83,17 @@ class longEU():
             self.cum_cost=np.cumsum(sorted_cost) #max cum cost
 
             #---------------Reward estimator ----------------- 
-            if self.bandit_alg['est_reward']=='UCB-lattimore':
-                est_reward=self.UCBlat_value(info['max_round'])
-            elif self.bandit_alg['est_reward']=='UCB1':
-                est_reward=self.UCB1_value(info['curr_round'],info['max_round'])
-            elif self.bandit_alg['est_reward']=='TS':
-                est_reward=self.TS_value()
-            elif self.bandit_alg['est_reward']=='posterior-mean':
-                est_reward=self.alpha/(self.alpha+self.beta)
+            if self.is_reward_known:
+                est_reward=np.array(self.player.reward_generator.mean)
+            else:
+                if self.bandit_alg['est_reward']=='UCB-lattimore':
+                    est_reward=self.UCBlat_value(info['max_round'])
+                elif self.bandit_alg['est_reward']=='UCB1':
+                    est_reward=self.UCB1_value(info['curr_round'],info['max_round'])
+                elif self.bandit_alg['est_reward']=='TS':
+                    est_reward=self.TS_value()
+                elif self.bandit_alg['est_reward']=='posterior-mean':
+                    est_reward=self.alpha/(self.alpha+self.beta)
 
             eps = 0 #float(1E-1)
             bnds = [(float(0 - eps), float(1 + eps)) for _ in range(self.player.num_agent)]
