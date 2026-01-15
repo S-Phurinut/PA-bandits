@@ -55,7 +55,7 @@ class gEU(): #EU with agent approx model
             if self.cost_alg=="uniformly-space":
                 self.cost_list=list(np.linspace(1E-12,1-(1E-12),int(self.num_cost_learning)))
             
-            if self.alg['est_reward']=='TS' or self.alg['est_reward']=='posterior-mean'  and self.type_arm=='participation-based':
+            if self.alg['est_reward']=='TS' or self.alg['est_reward']=='incTS' or self.alg['est_reward']=='posterior-mean'  and self.type_arm=='participation-based':
                 if self.alg['prior'] is not None:
                     if self.alg['prior'][0]=='beta':
                         if self.alg['prior'][1][0]=='fixed':
@@ -104,7 +104,7 @@ class gEU(): #EU with agent approx model
                 self.sum_reward[n]+=info['previous_reward']
                 self.num_reward[n]+=1
 
-                if self.alg['est_reward']=='TS' or self.alg['est_reward']=='posterior-mean' :
+                if self.alg['est_reward']=='TS' or self.alg['est_reward']=='posterior-mean' or self.alg['est_reward']=='incTS':
                     if info['previous_reward']>0:
                         self.alpha[n]+=1
                     else:
@@ -141,6 +141,8 @@ class gEU(): #EU with agent approx model
                         est_reward=self.TS_value()
                     elif self.alg['est_reward']=='posterior-mean':
                         est_reward=self.alpha/(self.alpha+self.beta)
+                    elif self.alg['est_reward']=='incTS':
+                        est_reward=self.incTS_value(max_resampling_inc=self.alg['max_resampling_inc'])
                     elif self.alg['est_reward']=='increasing-TS':
                         refit_model=True
                         if self.alg['refit_step']=="adaptive-log10":
@@ -236,6 +238,7 @@ class gEU(): #EU with agent approx model
             sample = np.random.beta(self.alpha[n], self.beta[n])
             sampled_thetas.append(sample)
         return np.array(sampled_thetas)
+        
     
     def structured_TS_value(self,type='increasing',refit_model=True):
         M = np.zeros((self.player.num_agent+1, self.player.num_agent+1), dtype=np.float64)  # exclude first arm
@@ -263,6 +266,26 @@ class gEU(): #EU with agent approx model
         p_all=self.p_samples[:,np.random.randint(0,self.p_samples.shape[1])][1:]
 
         return np.array(p_all)
+    
+    def incTS_value(self,max_resampling_inc=1E7):
+        if max_resampling_inc is None: max_resampling_inc=1E7
+        resampling=True
+        count_inc=-1
+        while resampling:
+            count_inc+-1
+            sampled_thetas = []
+            for n in range(self.player.num_agent):
+                # Draw a sample from the Beta(alpha_i, beta_i) distribution
+                sample = np.random.beta(self.alpha[n], self.beta[n])
+                sampled_thetas.append(sample)
+
+                if n>0 and sample<sampled_thetas[-1] and count_inc<=max_resampling_inc: #if reward is not incresing, restart
+                    resampling=True
+                    break
+                else:
+                    resampling=False
+
+        return np.array(sampled_thetas)
 
 
 

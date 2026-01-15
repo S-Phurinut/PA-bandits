@@ -3,7 +3,7 @@ type_arm : participation-based
 num_cost_learning : 0
 cost_alg : null #D-optimal #uniformly-space #null
 est_reward: TS #UCB-lattimore
-name : gEU
+name : TS-EU
 num_optimiser : 16
 is_reward_known : False
 model_training_appr : T
