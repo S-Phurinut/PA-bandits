@@ -2,5 +2,5 @@ _target_ : Reward_generator.Participation_based_Reward
 type_dist : Bernoulli
 mean_prob : [0.2,0.2,0.3,0.4,0.5] 
 success_value : 1
-
+type : pre-defined
 #use with MABA_5lc3

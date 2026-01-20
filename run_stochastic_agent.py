@@ -10,7 +10,13 @@ warnings.filterwarnings('ignore')  # Suppress all warnings
 
 warnings.warn("This warning will be hidden")
 
-
+import os
+os.environ["PYTENSOR_FLAGS"] = (
+    "compiledir=/tmp/pytensor_unique,"
+    "verbosity=low"
+    "linker=py,"
+    "optimizer=fast_compile"
+)
 
 
 @hydra.main(version_base=None,config_path="config", config_name="main2")

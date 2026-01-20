@@ -3,3 +3,4 @@ type_dist : Bernoulli
 mean_prob : [0.492,0.493,0.494,0.495,0.496,0.497,0.498,0.499,0.50,0.499] 
 success_value : 1
 name: max050_gap0001_rear_10arm
+type : pre-defined

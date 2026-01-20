@@ -5,3 +5,4 @@ success_value : 1
 base : null
 log_constant : 1
 curve_constant : 1
+type : pre-defined

@@ -1,5 +1,6 @@
 _target_ : Reward_generator.Participation_based_Reward
 type_dist : Bernoulli
-mean_prob : [0.4,0.9] 
+mean_prob : null
+mean_prob_constraint : ["uniform","increasing","concave"]
 success_value : 1
-type : pre-defined
+type : random

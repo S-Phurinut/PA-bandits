@@ -6,3 +6,4 @@ mean_prob : [
     ]
 success_value : 1
 name: UMAB17
+type : pre-defined

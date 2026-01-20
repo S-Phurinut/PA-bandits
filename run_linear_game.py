@@ -38,35 +38,54 @@ def main(config):
 
     try:
         #Set environment of the simulations from YAML files
-        if config.setting['type']=='pre-defined':
-            for sim in range(0,M):
-                seed=sim+config.setting['init_seed_id']
-                np.random.seed(seed=seed)
-                print("sim=",sim,' game_seed=',seed)
+        for sim in range(0,M):
+            seed=sim+config.setting['init_seed_id']
+            np.random.seed(seed=seed)
+            print("sim=",sim,' game_seed=',seed)
 
+            if config.reward_generator['type']=='pre-defined':
                 Reward_generator=hydra.utils.instantiate(config.reward_generator,num_agent=N)
-                Policy=hydra.utils.instantiate(config.policy)
+            elif config.reward_generator['type']=='random':
+                Reward_generator=hydra.utils.instantiate(config.reward_generator,num_agent=N)
+                if "uniform" in list(config.reward_generator['mean_prob_constraint']):
+                    if "increasing" in list(config.reward_generator['mean_prob_constraint']):
+                        if "concave" in list(config.reward_generator['mean_prob_constraint']):
+                            sampled_reward=[float(np.random.rand())]
+                            for _ in range(1,N):
+                                r=float(np.random.uniform(low=0,high=sampled_reward[-1],size=1))
+                                sampled_reward.append(sampled_reward[-1]+r)
+                        else:
+                            sampled_reward=[float(np.random.rand())]
+                            for _ in range(1,N):
+                                r=float(np.random.uniform(low=sampled_reward[-1],high=1,size=1))
+                                sampled_reward.append(r)
+                    else:
+                        sampled_reward=np.random.rand(N,)
+                sampled_reward=np.clip(sampled_reward,0,1)
+                Reward_generator.set_mean(mean=list(sampled_reward))
+            Policy=hydra.utils.instantiate(config.policy)
+            if config.setting['type']=='pre-defined':
                 Setting=hydra.utils.instantiate(config.setting,
-                                            principal_policy=Policy,
-                                            Reward_generator=Reward_generator)
-                reward_array, agent_response_array, incentive_array,pred_best_reward_array = Setting.run_fixed_budget(max_round=T)
-                optimal_incentive, optimal_utility = Setting.optimal_solution()
+                                        principal_policy=Policy,
+                                        Reward_generator=Reward_generator)
+            reward_array, agent_response_array, incentive_array,pred_best_reward_array = Setting.run_fixed_budget(max_round=T)
+            optimal_incentive, optimal_utility = Setting.optimal_solution()
 
-                #--------Store data for each run--------
-                wandb.log({"seed":seed,"optimal_utility": optimal_utility})
-                
-                offered_incentive_array[sim,:,:]=incentive_array
-                incentive_regret=optimal_incentive-incentive_array
-                l1_dist_incentive_array[sim,:]=np.linalg.norm(incentive_regret,ord=1,axis=1)
-                l2_dist_incentive_array[sim,:]=np.linalg.norm(incentive_regret,ord=2,axis=1)
-                linf_dist_incentive_array[sim,:]=np.linalg.norm(incentive_regret,ord=np.inf,axis=1)
+            #--------Store data for each run--------
+            wandb.log({"seed":seed,"optimal_utility": optimal_utility})
+            
+            offered_incentive_array[sim,:,:]=incentive_array
+            incentive_regret=optimal_incentive-incentive_array
+            l1_dist_incentive_array[sim,:]=np.linalg.norm(incentive_regret,ord=1,axis=1)
+            l2_dist_incentive_array[sim,:]=np.linalg.norm(incentive_regret,ord=2,axis=1)
+            linf_dist_incentive_array[sim,:]=np.linalg.norm(incentive_regret,ord=np.inf,axis=1)
 
-                total_incentive_array[sim,:]=np.sum(incentive_array,axis=1).reshape(-1,)
-                l1_dist_total_incentive_array[sim,:]=np.abs(total_incentive_array[sim,:]-np.sum(optimal_incentive))
-                num_agent_response_array[sim,:]=np.sum(agent_response_array,axis=1).reshape(-1,)
-                num_agent_response_regret_array[sim,:]=np.sum(optimal_incentive>0)-num_agent_response_array[sim,:]
-                regret_array[sim,:]=optimal_utility-reward_array
-                simple_regret_array[sim,:]=optimal_utility-pred_best_reward_array
+            total_incentive_array[sim,:]=np.sum(incentive_array,axis=1).reshape(-1,)
+            l1_dist_total_incentive_array[sim,:]=np.abs(total_incentive_array[sim,:]-np.sum(optimal_incentive))
+            num_agent_response_array[sim,:]=np.sum(agent_response_array,axis=1).reshape(-1,)
+            num_agent_response_regret_array[sim,:]=np.sum(optimal_incentive>0)-num_agent_response_array[sim,:]
+            regret_array[sim,:]=optimal_utility-reward_array
+            simple_regret_array[sim,:]=optimal_utility-pred_best_reward_array
 
         # #-------log mean and variance of data-------
         mean_offered_incentive_array=np.mean(offered_incentive_array,axis=0)

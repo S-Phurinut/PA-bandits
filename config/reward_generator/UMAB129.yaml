@@ -17,3 +17,4 @@ mean_prob : [
     ]
 success_value : 1
 name: UMAB129
+type : pre-defined

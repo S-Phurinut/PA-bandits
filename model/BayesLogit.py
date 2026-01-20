@@ -9,6 +9,13 @@ if not hasattr(scipy.signal, "gaussian"):
     scipy.signal.gaussian = scipy.signal.windows.gaussian
 
 import pymc as pm
+import os
+os.environ["PYTENSOR_FLAGS"] = (
+    "verbosity=low,"
+    "exception_verbosity=high,"
+    "linker=py,"
+    "optimizer=fast_compile"
+)
 
 class BayesLogit:
     def __init__(self, num_agent, **model):

@@ -48,9 +48,25 @@ class Participation_based_Reward():
                     self.p= lambda x : self.a*(np.log(x+1)/np.log(self.base))/(self.b+self.a*(np.log(x+1)/np.log(self.base)))
                     self.mean = (self.a*(np.log(np.arange(1,self.num_agent+1)+1)/np.log(self.base))/(self.b+self.a*(np.log(np.arange(1,self.num_agent+1)+1)/np.log(self.base))))*self.r
             else:
-                self.p= lambda x : self.dist_parameter['mean_prob'][int(x-1)]
-                self.mean = np.array(self.dist_parameter['mean_prob'])*self.r
+                if self.dist_parameter['mean_prob'] is not None:
+                    self.p= lambda x : self.dist_parameter['mean_prob'][int(x-1)]
+                    self.mean = np.array(self.dist_parameter['mean_prob'])*self.r
     
+    def set_mean(self,mean=None,success_value=None):
+        if mean is not None:
+            m=mean
+        else:
+            m=self.dist_parameter['mean_prob']
+
+        if success_value is not None:
+            R=success_value
+        else:
+            R=self.dist_parameter['success_value']
+
+        self.p= lambda x : m[int(x-1)]
+        self.mean = np.array(m)*R
+
+
     def get_true_mean(self,incentive=None,agent_action=None):
         if agent_action is None:
             return 0,0

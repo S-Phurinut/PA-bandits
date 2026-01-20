@@ -3,3 +3,4 @@ type_dist : Bernoulli
 mean_prob : [0.5,0.60,0.70,0.80,0.85,0.90,0.85,0.8,0.7,0.6,0.5] 
 success_value : 1
 name: max090_cave005_mid_11arm
+type : pre-defined

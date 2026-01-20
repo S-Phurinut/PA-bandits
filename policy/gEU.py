@@ -51,6 +51,11 @@ class gEU(): #EU with agent approx model
 
             if self.num_cost_learning=='log2T': 
                 self.num_cost_learning=math.ceil(np.log2(info['max_round']))
+            elif self.num_cost_learning=='logT': 
+                self.num_cost_learning=math.ceil(np.log(info['max_round']))
+            elif self.num_cost_learning=='T1/2': 
+                self.num_cost_learning=math.ceil(np.sqrt(info['max_round']))
+            
             
             if self.cost_alg=="uniformly-space":
                 self.cost_list=list(np.linspace(1E-12,1-(1E-12),int(self.num_cost_learning)))
@@ -272,18 +277,17 @@ class gEU(): #EU with agent approx model
         resampling=True
         count_inc=-1
         while resampling:
-            count_inc+-1
+            count_inc+=1
             sampled_thetas = []
             for n in range(self.player.num_agent):
                 # Draw a sample from the Beta(alpha_i, beta_i) distribution
                 sample = np.random.beta(self.alpha[n], self.beta[n])
-                sampled_thetas.append(sample)
-
                 if n>0 and sample<sampled_thetas[-1] and count_inc<=max_resampling_inc: #if reward is not incresing, restart
                     resampling=True
                     break
                 else:
                     resampling=False
+                sampled_thetas.append(sample)
 
         return np.array(sampled_thetas)
 

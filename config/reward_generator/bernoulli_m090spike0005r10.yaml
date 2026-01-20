@@ -3,3 +3,4 @@ type_dist : Bernoulli
 mean_prob : [0.877,0.878,0.879,0.880,0.882,0.885,0.890,0.895,0.90,0.895] 
 success_value : 1
 name: max090_spike0005_rear_10arm
+type : pre-defined

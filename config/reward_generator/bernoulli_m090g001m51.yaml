@@ -11,3 +11,4 @@ mean_prob : [
 ]
 success_value : 1
 name: max090_gap001_mid_51arm
+type : pre-defined

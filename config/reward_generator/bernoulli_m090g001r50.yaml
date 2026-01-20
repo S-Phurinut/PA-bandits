@@ -10,3 +10,4 @@ mean_prob : [
 ] 
 success_value : 1
 name: max090_gap001_rear_50arm
+type : pre-defined

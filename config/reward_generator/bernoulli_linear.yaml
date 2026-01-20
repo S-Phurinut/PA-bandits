@@ -3,3 +3,4 @@ type_dist : Bernoulli
 mean_prob : linear
 success_value : 1
 contribution_level : 0.1
+type : pre-defined

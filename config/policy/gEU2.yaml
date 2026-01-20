@@ -1,0 +1,12 @@
+_target_ : policy.gEU.gEU
+type_arm : participation-based
+num_cost_learning : logT
+cost_alg : D-optimal #uniformly-space #D-optimal
+est_reward: TS #TS #UCB-lattimore
+name : gEU
+num_optimiser : 16
+is_reward_known : False
+model_training_appr : T
+is_model_known : False #True
+prior : null #['beta',['fixed',3],['fixed',1]] #['beta',['linear',1,2],['fixed',1]]s
+# max_resampling_inc : 1E4
