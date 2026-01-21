@@ -10,7 +10,7 @@ model_training_appr : T
 is_model_known : False #True
 prior : null #['beta',['fixed',3],['fixed',1]] #['beta',['linear',1,2],['fixed',1]]s
 max_resampling_inc : 1E4
-
+stopping_criteria : null
 # refit_step: 1
 # likelihood_model : cdf-exp
 # #For pymc packages

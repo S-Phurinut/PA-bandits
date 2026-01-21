@@ -10,6 +10,6 @@ is_reward_known : False
 is_cost_known : False
 min_sample_required : 0
 # prior : ['beta',['linear',1,2],['fixed',1]]
-
+stopping_criteria : null
 max_resampling_inc : 1E4
 max_resampling_concave : 5E3

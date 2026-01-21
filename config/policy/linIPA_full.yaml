@@ -5,3 +5,4 @@ cost_alg : MultiBinSearch
 bandit_alg: UCB-lattimore
 name : linIPA-full
 is_cost_known : False
+stopping_criteria : null

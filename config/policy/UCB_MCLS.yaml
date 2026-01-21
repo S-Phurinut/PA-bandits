@@ -4,3 +4,4 @@ num_cost_learning : log2T
 cost_alg : MultiBinSearch
 name : UCB-MCLS
 is_cost_known : False
+stopping_criteria : null

@@ -59,7 +59,8 @@ class MABA_model():
             index_sort=np.argsort(np.array(self.cost),axis=None)
             sorted_cost=np.array(self.cost)[index_sort]
             cum_cost=np.cumsum(sorted_cost)
-            best_net_reward=-math.inf
+            best_net_reward=0
+            optimal_number=0
             for n in range(self.num_agent):
                 net_reward=self.reward_generator.mean[n]-cum_cost[n]
                 if net_reward>best_net_reward:

@@ -6,6 +6,7 @@ bandit_alg: TS #UCB-lattimore
 bandit_alg_paras : null #for KL_UCB
 name : IPA-full
 
+stopping_criteria : null
 is_reward_known : False
 is_cost_known : False
 min_sample_required : 0

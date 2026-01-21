@@ -13,3 +13,4 @@ min_sample_required : 0
 
 max_resampling_inc : 1E4
 max_resampling_concave : null #1E6
+stopping_criteria : null
