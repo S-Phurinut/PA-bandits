@@ -1,0 +1,11 @@
+_target_ : policy.TS_Gibbs_monotone.TS_Gibbs_Monotone
+type_arm : participation-based
+num_cost_learning : log2T
+cost_alg : MultiBinSearch
+name : TS-Gibbs-monotone
+is_reward_known : False
+is_cost_known : False #True
+num_sweeps : 50
+random_scan : True
+eps : 1e-12
+min_sample_required : 0 #1

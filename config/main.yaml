@@ -1,8 +1,8 @@
 defaults:
   - _self_
-  - setting : MABA_10lc2
+  - setting : MABA_5lc
   - policy : TS #IPA_full #longEU
-  - reward_generator : bernoulli_inc_rand #bernoulli_bounded_log #poly #bounded_log #mono_logistic
-num_sim : 10000
+  - reward_generator : bernoulli_cave_rand #bernoulli_bounded_log #poly #bounded_log #mono_logistic
+num_sim : 100
 max_round : 10000
 wandb_mode : online

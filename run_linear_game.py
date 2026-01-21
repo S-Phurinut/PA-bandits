@@ -50,10 +50,11 @@ def main(config):
                 if "uniform" in list(config.reward_generator['mean_prob_constraint']):
                     if "increasing" in list(config.reward_generator['mean_prob_constraint']):
                         if "concave" in list(config.reward_generator['mean_prob_constraint']):
-                            sampled_reward=[float(np.random.rand())]
+                            sampled_reward=[0,float(np.random.rand())]
                             for _ in range(1,N):
-                                r=float(np.random.uniform(low=0,high=sampled_reward[-1],size=1))
+                                r=float(np.random.uniform(low=0,high=sampled_reward[-1]-sampled_reward[-2],size=1))
                                 sampled_reward.append(sampled_reward[-1]+r)
+                            sampled_reward.pop(0)
                         else:
                             sampled_reward=[float(np.random.rand())]
                             for _ in range(1,N):
@@ -62,6 +63,7 @@ def main(config):
                     else:
                         sampled_reward=np.random.rand(N,)
                 sampled_reward=np.clip(sampled_reward,0,1)
+                print("Random Reward func=",sampled_reward)
                 Reward_generator.set_mean(mean=list(sampled_reward))
             Policy=hydra.utils.instantiate(config.policy)
             if config.setting['type']=='pre-defined':

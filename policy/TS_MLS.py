@@ -14,6 +14,11 @@ class TS_Monotone_LeastSquare():
         else:
             self.is_cost_known=False
 
+        if 'is_reward_known' in bandit_alg:
+            self.is_reward_known=bandit_alg['is_reward_known']
+        else:
+            self.is_reward_known=False
+        
         self.bandit_alg=bandit_alg
         self.reset=True
 

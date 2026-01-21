@@ -3,6 +3,7 @@ type_arm : participation-based
 num_cost_learning : log2T
 cost_alg : MultiBinSearch
 name : TS-MLS
-is_cost_known : True
-need_weighted_LS : True
-min_sample_required : 3
+is_reward_known : False
+is_cost_known : False #True
+need_weighted_LS : False #True
+min_sample_required : 1 #3
