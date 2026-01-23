@@ -1,0 +1,16 @@
+_target_ : policy.gEU_Gibbs_monotone.gEU_Gibbs_Monotone
+type_arm : participation-based
+num_cost_learning : 0
+cost_alg : null #uniformly-space #D-optimal
+est_reward: TS-Gibb-monotone 
+name : gEU
+num_optimiser : 16
+is_reward_known : False
+model_training_appr : T
+is_model_known : False #True
+prior : null #['beta',['fixed',3],['fixed',1]] #['beta',['linear',1,2],['fixed',1]]s
+
+num_sweeps : 20
+random_scan : True
+eps : 1e-12
+init_sweep_appr : T

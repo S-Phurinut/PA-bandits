@@ -2,7 +2,8 @@ _target_ : policy.TS_MLS.TS_Monotone_LeastSquare
 type_arm : participation-based
 num_cost_learning : log2T
 cost_alg : MultiBinSearch
-name : TS-MLS
+bandit_alg: TS-MLS
+name : IPA-full
 is_reward_known : False
 is_cost_known : False #True
 need_weighted_LS : False #True

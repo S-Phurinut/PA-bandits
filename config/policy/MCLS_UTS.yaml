@@ -2,8 +2,8 @@ _target_ : policy.MCLS_UTS.Monotone_Concave_LeastSquare_UnimodalTS
 type_arm : participation-based
 num_cost_learning : log2T
 cost_alg : MultiBinSearch
-name : MCLS-UTS
-
+bandit_alg: MCLS-UTS
+name : IPA-full
 constraint_model : increasing
 refit_step :  "adaptive-log10" #---> refit in every log10(round)-constant [1,10,100,1000]
 refit_step_constant : 2

@@ -2,7 +2,8 @@ _target_ : policy.TS_MCLS.TS_Monotone_Concave_LeastSquare
 type_arm : participation-based
 num_cost_learning : log2T
 cost_alg : MultiBinSearch
-name : TS-MCLS
+bandit_alg: TS-MCLS
+name : IPA-full
 is_reward_known : False
 is_cost_known : False #True
 need_weighted_LS : False #True
