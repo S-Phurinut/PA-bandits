@@ -8,3 +8,4 @@ is_cost_known : False #True
 need_weighted_LS : False #True
 min_sample_required : 1
 stopping_criteria : null
+include_arm0 : True

@@ -6,13 +6,14 @@ import math
 
 class TS_Gibbs_Monotone():
     def __init__(self,type_arm,num_cost_learning=1,cost_alg='MultiBinSearch',
-                 num_sweeps=10,random_scan=True,eps=1e-12,**bandit_alg):
+                 num_sweeps=10,random_scan=True,eps=1e-12,init_sweep_appr='once',**bandit_alg):
         self.type_arm=type_arm
         self.num_cost_learning=num_cost_learning
         self.cost_alg=cost_alg
         self.num_sweeps=num_sweeps #Number of full Gibbs sweeps
         self.random_scan=random_scan #If True, update indices in a random permutation each sweep
         self.eps=eps #Numerical safety margin for CDF inversion and interval clamping.
+        self.init_sweep_appr=init_sweep_appr
 
         if 'is_cost_known' in bandit_alg:
             self.is_cost_known=bandit_alg['is_cost_known']
@@ -101,6 +102,9 @@ class TS_Gibbs_Monotone():
                         # print(TS_sample)
                         print("num reward=",self.num_reward)
 
+                    if self.init_sweep_appr=="T":
+                        self.init_Gibb_sample=True
+
                     #------------init Gibbs sample by Monotone regression-----------------
                     if self.init_Gibb_sample:
                         n=self.player.num_agent+1
@@ -182,7 +186,7 @@ class TS_Gibbs_Monotone():
                             
 
 
-                    if info['curr_round']%100==0:   print("gibb_sample=",self.gibb_sample)
+                    if info['curr_round']%1000==0:   print("gibb_sample=",self.gibb_sample)
 
                     #---------------Greedy alg-----------------
                     best_utility=-math.inf
@@ -192,6 +196,10 @@ class TS_Gibbs_Monotone():
                         if utility>best_utility:
                             pulled_arm=arm
                             best_utility=utility
+                    
+                    if self.bandit_alg['include_arm0']:
+                        if best_utility<0:
+                            pulled_arm=-1
                 
                 #------------Turn arm into incentive-----------
                 incentive=np.zeros((self.player.num_agent,))
@@ -201,19 +209,25 @@ class TS_Gibbs_Monotone():
                     
                 #----------Predict best arm---------
                 est_mean_reward=self.sum_reward/self.num_reward-self.cum_cost
-                best_arm=0
-                best_mean=-math.inf
+                best_arm=-1
+                best_mean=0
                 for arm in range(est_mean_reward.shape[0]):
                     if est_mean_reward[arm]<math.inf and est_mean_reward[arm]>best_mean:
                         best_mean=est_mean_reward[arm]
                         best_arm=arm
-                
+
                 self.best_incentive=np.zeros((self.player.num_agent,))
-                if est_mean_reward[best_arm]<math.inf:
-                    self.best_incentive=np.zeros((self.player.num_agent,))
-                    for n in range(best_arm+1):
-                        id_agent=self.id_sorted_cost[n]
-                        self.best_incentive[id_agent]=self.max_cost[id_agent]
+                if best_arm>=0:
+                    if est_mean_reward[best_arm]<math.inf:
+                        self.best_incentive=np.zeros((self.player.num_agent,))
+                        for n in range(best_arm+1):
+                            id_agent=self.id_sorted_cost[n]
+                            self.best_incentive[id_agent]=self.max_cost[id_agent]
+                            
+        if info['curr_round']==info['max_round']:
+            print("final incentive=",incentive)
+            print("final num reward=",self.num_reward)
+            if self.bandit_alg['include_arm0']: print("num arm0=",info['max_round']-np.sum(self.num_reward))
         return incentive    
 
             

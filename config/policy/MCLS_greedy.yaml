@@ -5,3 +5,5 @@ cost_alg : MultiBinSearch
 name : MCLS-greedy
 constraint_model : increasing
 is_cost_known : False
+include_arm0 : True
+stopping_criteria : null

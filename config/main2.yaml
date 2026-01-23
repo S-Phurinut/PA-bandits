@@ -5,6 +5,6 @@ defaults:
   - policy : incTS_EU
   - model : bayeslogit
   - reward_generator : MASA_ber5
-num_sim : 100
-max_round : 100
-wandb_mode : online
+num_sim : 1
+max_round : 10
+wandb_mode : offline

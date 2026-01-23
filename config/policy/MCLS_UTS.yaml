@@ -10,4 +10,5 @@ refit_step_constant : 2
 max_round_1step : 5000
 is_cost_known : True
 min_sample_required : 1
+include_arm0 : False
 stopping_criteria : null

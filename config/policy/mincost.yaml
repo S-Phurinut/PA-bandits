@@ -6,3 +6,5 @@ bandit_alg_paras : null #for KL_UCB
 name : mincost
 is_cost_known : False
 min_sample_required : 0
+include_arm0 : False
+stopping_criteria : null

@@ -6,3 +6,4 @@ bandit_alg: UCB-lattimore
 name : IPA
 is_cost_known : False
 stopping_criteria : null
+include_arm0 : True

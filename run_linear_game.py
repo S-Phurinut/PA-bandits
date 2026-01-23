@@ -43,35 +43,65 @@ def main(config):
             np.random.seed(seed=seed)
             print("sim=",sim,' game_seed=',seed)
 
-            if config.reward_generator['type']=='pre-defined':
-                Reward_generator=hydra.utils.instantiate(config.reward_generator,num_agent=N)
-            elif config.reward_generator['type']=='random':
-                Reward_generator=hydra.utils.instantiate(config.reward_generator,num_agent=N)
-                if "uniform" in list(config.reward_generator['mean_prob_constraint']):
-                    if "increasing" in list(config.reward_generator['mean_prob_constraint']):
-                        if "concave" in list(config.reward_generator['mean_prob_constraint']):
-                            sampled_reward=[0,float(np.random.rand())]
-                            for _ in range(1,N):
-                                r=float(np.random.uniform(low=0,high=sampled_reward[-1]-sampled_reward[-2],size=1))
-                                sampled_reward.append(sampled_reward[-1]+r)
-                            sampled_reward.pop(0)
-                        else:
-                            sampled_reward=[float(np.random.rand())]
-                            for _ in range(1,N):
-                                r=float(np.random.uniform(low=sampled_reward[-1],high=1,size=1))
-                                sampled_reward.append(r)
-                    else:
-                        sampled_reward=np.random.rand(N,)
-                sampled_reward=np.clip(sampled_reward,0,1)
-                print("Random Reward func=",sampled_reward)
-                Reward_generator.set_mean(mean=list(sampled_reward))
             Policy=hydra.utils.instantiate(config.policy)
-            if config.setting['type']=='pre-defined':
-                Setting=hydra.utils.instantiate(config.setting,
-                                        principal_policy=Policy,
-                                        Reward_generator=Reward_generator)
-            reward_array, agent_response_array, incentive_array,pred_best_reward_array = Setting.run_fixed_budget(max_round=T)
+            Reward_generator=hydra.utils.instantiate(config.reward_generator,num_agent=N)
+            Setting=hydra.utils.instantiate(config.setting,
+                                    principal_policy=Policy,
+                                    Reward_generator=Reward_generator)
+
+            
+            resampling=True
+            while resampling:
+                if config.reward_generator['type']=='random':
+                    if "uniform" in list(config.reward_generator['mean_prob_constraint']):
+                        if "increasing" in list(config.reward_generator['mean_prob_constraint']):
+                            if "concave" in list(config.reward_generator['mean_prob_constraint']):
+                                sampled_reward=[0,float(np.random.rand())]
+                                for _ in range(1,N):
+                                    r=float(np.random.uniform(low=0,high=sampled_reward[-1]-sampled_reward[-2],size=1))
+                                    sampled_reward.append(sampled_reward[-1]+r)
+                                sampled_reward.pop(0)
+                            else:
+                                sampled_reward=[float(np.random.rand())]
+                                for _ in range(1,N):
+                                    r=float(np.random.uniform(low=sampled_reward[-1],high=1,size=1))
+                                    sampled_reward.append(r)
+                        else:
+                            sampled_reward=np.random.rand(N,)
+                    sampled_reward=np.clip(sampled_reward,0,1)
+                    Reward_generator.set_mean(mean=list(sampled_reward))
+
+                    if type(config.setting['agent_cost'])==str:
+                        if config.setting['agent_cost']=='random':
+                            if config.setting['agent_cost_dist'][0]=='Uniform':
+                                low=np.ones(N,)*config.setting['agent_cost_dist'][1]
+                                high=np.ones(N,)*config.setting['agent_cost_dist'][2]
+                                cost=np.random.uniform(low=low,high=high)
+                        Setting.cost=cost
+
+                if config.setting['type'] is not None:
+                    if  config.setting['type']=="beneficial-game":
+                        _, optimal_utility = Setting.optimal_solution()
+                        if optimal_utility>0: resampling=False
+                    elif config.setting['type']=="non-beneficial-game":
+                        _, optimal_utility = Setting.optimal_solution()
+                        if optimal_utility<=0: resampling=False
+                else:
+                    resampling=False
+                    
+            if config.reward_generator['type']=='random': print("Random Reward func=",sampled_reward)
+
+            
+            # if config.setting['type']=='pre-defined':
+            
+
+            
+
+            
+            
             optimal_incentive, optimal_utility = Setting.optimal_solution()
+            reward_array, agent_response_array, incentive_array,pred_best_reward_array = Setting.run_fixed_budget(max_round=T)
+            
 
             #--------Store data for each run--------
             wandb.log({"seed":seed,"optimal_utility": optimal_utility})

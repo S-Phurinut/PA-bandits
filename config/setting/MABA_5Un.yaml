@@ -1,0 +1,6 @@
+_target_ : MABA_model.MABA_model
+num_agent : 5
+agent_cost : random
+agent_cost_dist : ['Uniform',0,0.2]
+type : non-beneficial-game
+init_seed_id : 0

@@ -90,56 +90,58 @@ class TS_Monotone_Concave_LeastSquare():
                 if np.sum(self.num_reward<self.bandit_alg['min_sample_required'])>0:
                     pulled_arm=np.argmin(self.num_reward)
                 else:
-                    if np.sum(self.num_reward<0)>0:
-                        pulled_arm=np.argmin(self.num_reward)
-                    else:
-                        n=self.player.num_agent+1
-                        f = cp.Variable(n)
-                        # constraints
-                        cons = []
-                        cons += [ f[0]==0 ]
-                        # isotonic: f[i+1] >= f[i]
-                        cons += [f[i+1] - f[i] >= 0 for i in range(n-1)]
-                        # concave: second differences <= 0
-                        cons += [f[i+2] - 2*f[i+1] + f[i] <= 0 for i in range(n-2)]
-                        # maximum prob <=1
-                        cons += [f[n-1] <= 1]
-
-                        # objective: least squares
-
-                        TS_sample = np.zeros((self.player.num_agent+1,))
-                        for n in range(self.player.num_agent):
-                            # Draw a sample from the Beta(alpha_i, beta_i) distribution
-                            TS_sample[n+1] = np.random.beta(self.alpha[n], self.beta[n])
-
-                        if info['curr_round']%100==0:  
-                            # print(TS_sample)
-                            print("num reward=",self.num_reward)
                     
-                        if self.need_weighted_LS:
-                            obj = cp.Minimize(cp.sum_squares(cp.multiply(np.concatenate(([1],self.num_reward)),(TS_sample - f))))
-                        else:
-                            is_sample_exist= np.ones((self.player.num_agent))
-                            for n in range(self.player.num_agent):
-                                if self.num_reward[n]==0:
-                                    is_sample_exist[n]=0
-                            obj = cp.Minimize(cp.sum_squares(cp.multiply(np.concatenate(([1],is_sample_exist)),(TS_sample - f))))
-                        
-                        
-                        prob = cp.Problem(obj, cons)
-                        prob.solve(solver=cp.OSQP)
-                        est_fun=lambda x : f.value[x]
+                    n=self.player.num_agent+1
+                    f = cp.Variable(n)
+                    # constraints
+                    cons = []
+                    cons += [ f[0]==0 ]
+                    # isotonic: f[i+1] >= f[i]
+                    cons += [f[i+1] - f[i] >= 0 for i in range(n-1)]
+                    # concave: second differences <= 0
+                    cons += [f[i+2] - 2*f[i+1] + f[i] <= 0 for i in range(n-2)]
+                    # maximum prob <=1
+                    cons += [f[n-1] <= 1]
 
-                        # print("est success prob=",f.value)
+                    # objective: least squares
 
-                        #---------------Greedy alg-----------------
-                        best_utility=-math.inf
-                        pulled_arm=0
-                        for arm in range(self.player.num_agent):
-                            utility=est_fun(arm+1)-self.cum_cost[arm]
-                            if utility>best_utility:
-                                pulled_arm=arm
-                                best_utility=utility
+                    TS_sample = np.zeros((self.player.num_agent+1,))
+                    for n in range(self.player.num_agent):
+                        # Draw a sample from the Beta(alpha_i, beta_i) distribution
+                        TS_sample[n+1] = np.random.beta(self.alpha[n], self.beta[n])
+
+                    if info['curr_round']%100==0:  
+                        # print(TS_sample)
+                        print("num reward=",self.num_reward)
+                
+                    if self.need_weighted_LS:
+                        obj = cp.Minimize(cp.sum_squares(cp.multiply(np.concatenate(([1],self.num_reward)),(TS_sample - f))))
+                    else:
+                        is_sample_exist= np.ones((self.player.num_agent))
+                        for n in range(self.player.num_agent):
+                            if self.num_reward[n]==0:
+                                is_sample_exist[n]=0
+                        obj = cp.Minimize(cp.sum_squares(cp.multiply(np.concatenate(([1],is_sample_exist)),(TS_sample - f))))
+                    
+                    
+                    prob = cp.Problem(obj, cons)
+                    prob.solve(solver=cp.OSQP)
+                    est_fun=lambda x : f.value[x]
+
+                    # print("est success prob=",f.value)
+
+                    #---------------Greedy alg-----------------
+                    best_utility=-math.inf
+                    pulled_arm=0
+                    for arm in range(self.player.num_agent):
+                        utility=est_fun(arm+1)-self.cum_cost[arm]
+                        if utility>best_utility:
+                            pulled_arm=arm
+                            best_utility=utility
+                    
+                    if self.bandit_alg['include_arm0']:
+                        if best_utility<0:
+                            pulled_arm=-1
                 
                 #------------Turn arm into incentive-----------
                 incentive=np.zeros((self.player.num_agent,))
@@ -147,7 +149,27 @@ class TS_Monotone_Concave_LeastSquare():
                     id_agent=self.id_sorted_cost[n]
                     incentive[id_agent]=self.max_cost[id_agent]
                     
-                self.best_incentive=np.array(incentive)
+                #----------Predict best arm---------
+                est_mean_reward=self.sum_reward/self.num_reward-self.cum_cost
+                best_arm=-1
+                best_mean=0
+                for arm in range(est_mean_reward.shape[0]):
+                    if est_mean_reward[arm]<math.inf and est_mean_reward[arm]>best_mean:
+                        best_mean=est_mean_reward[arm]
+                        best_arm=arm
+
+                self.best_incentive=np.zeros((self.player.num_agent,))
+                if best_arm>=0:
+                    if est_mean_reward[best_arm]<math.inf:
+                        self.best_incentive=np.zeros((self.player.num_agent,))
+                        for n in range(best_arm+1):
+                            id_agent=self.id_sorted_cost[n]
+                            self.best_incentive[id_agent]=self.max_cost[id_agent]
+                            
+        if info['curr_round']==info['max_round']:
+            print("final incentive=",incentive)
+            print("final num reward=",self.num_reward)
+            if self.bandit_alg['include_arm0']: print("num arm0=",info['max_round']-np.sum(self.num_reward))
         return incentive    
 
             

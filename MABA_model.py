@@ -11,6 +11,8 @@ class MABA_model():
         self.num_agent=num_agent
         if type(agent_cost)==list:
             self.cost=agent_cost
+        elif type(agent_cost)==str:
+            self.cost=None
         else:
             self.cost=list(np.ones((self.num_agent,))*agent_cost)
         self.reward_generator=Reward_generator
@@ -90,6 +92,7 @@ class MASA_model():
         self.incentive_array=np.zeros((max_round,self.num_agent))
         self.agent_response_array=np.zeros((max_round,self.num_agent))
         self.reward_array=np.zeros((max_round,))
+        self.EU_array=np.zeros((max_round,))
 
         for t in tqdm(range(max_round)):
             self.policy.update_data(self)
@@ -104,8 +107,9 @@ class MASA_model():
             self.agent_response_array[t,:]=agent_response
             reward,cost=self.reward_generator.get_reward(incentive=incentive,agent_action=agent_response)
             self.reward_array[t]=reward-cost
+            self.EU_array[t]=-self.EU_value(cost=incentive)
 
-        return self.reward_array,self.agent_response_array,self.incentive_array
+        return self.reward_array,self.agent_response_array,self.incentive_array, self.EU_array
 
 
     def optimal_solution(self):

@@ -6,3 +6,5 @@ is_reward_known : True
 is_cost_known : False
 num_optimiser : 16
 prior : null #['beta',['fixed',3],['fixed',1]] #['beta',['linear',1,2],['fixed',1]]
+include_arm0 : True
+stopping_criteria : null

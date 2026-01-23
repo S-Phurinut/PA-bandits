@@ -5,3 +5,4 @@ cost_alg : MultiBinSearch
 name : UCB-MCLS
 is_cost_known : False
 stopping_criteria : null
+include_arm0 : False

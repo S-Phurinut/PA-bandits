@@ -4,3 +4,5 @@ num_cost_learning : log2T
 cost_alg : MultiBinSearch
 name : Extended-Sigmoid-greedy
 is_cost_known : False
+include_arm0 : False
+stopping_criteria : null

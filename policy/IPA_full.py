@@ -18,6 +18,11 @@ class IPA_full():
             self.is_reward_known=bandit_alg['is_reward_known']
         else:
             self.is_reward_known=False
+
+        if 'stopping_criteria' in bandit_alg:
+            self.stopping_criteria=bandit_alg['stopping_criteria']
+        else:
+            self.stopping_criteria=None
     
         self.reset=True
 
@@ -26,6 +31,7 @@ class IPA_full():
 
     def run(self,**info):
         if info['curr_round']==1 and self.reset:
+            self.T=info['max_round']
             if self.is_cost_known:
                 self.max_cost=np.array(self.player.cost)
                 self.num_cost_learning=0
@@ -59,6 +65,7 @@ class IPA_full():
 
             if self.bandit_alg['bandit_alg']=='UTS'  or self.bandit_alg['bandit_alg']=='incUTS' or self.bandit_alg['bandit_alg']=='concaveUTS'  or self.bandit_alg['bandit_alg']=='OSUB':
                 self.num_leader_count=np.zeros((self.player.num_agent,))
+                if self.bandit_alg['include_arm0']: self.num_leader_arm0=0
 
             self.reset=False
         else:
@@ -114,7 +121,8 @@ class IPA_full():
         
         #-------Phase2: Play Bandit Game-------
         else:
-            
+            if info['curr_round']%1000==0: print("num reward=",self.num_reward)
+
             if self.type_arm=='participation-based':
                 if info['curr_round']== self.num_cost_learning+1:  
                     self.id_sorted_cost=np.argsort(self.max_cost)
@@ -152,8 +160,21 @@ class IPA_full():
                     elif self.bandit_alg['bandit_alg']=='greedy':
                         pulled_arm=int(np.argmax(self.est_reward-self.cum_cost))
                         
-                # print("At round=",info['curr_round']," pull arm=",pulled_arm)
-                if info['curr_round']%1000==0: print("num reward=",self.num_reward)
+                if self.stopping_criteria is not None:
+                    if self.stopping_criteria=='Hoeffding-UCB': 
+                        if self.bandit_alg['stopping_para']=="1/T":
+                            delta=1/info['max_round']
+                        UCB=self.cal_HoeffdingUCB(confidence_level=delta)
+                        if np.max(UCB)<0:
+                            pull_arm0=True
+                        else:
+                            pull_arm0=False
+
+                    if pull_arm0:
+                        pulled_arm=-1
+
+
+
                 #------------Turn arm into incentive-----------
                 if np.sum(self.max_cost)==0:
                     incentive=np.ones((self.player.num_agent,))*(-1)
@@ -165,22 +186,25 @@ class IPA_full():
 
                 #----------Predict best arm---------
                 est_mean_reward=self.sum_reward/self.num_reward-self.cum_cost
-                best_arm=0
-                best_mean=-math.inf
+                best_arm=-1
+                best_mean=0
                 for arm in range(est_mean_reward.shape[0]):
                     if est_mean_reward[arm]<math.inf and est_mean_reward[arm]>best_mean:
                         best_mean=est_mean_reward[arm]
                         best_arm=arm
-                
+
                 self.best_incentive=np.zeros((self.player.num_agent,))
-                if est_mean_reward[best_arm]<math.inf:
-                    self.best_incentive=np.zeros((self.player.num_agent,))
-                    for n in range(best_arm+1):
-                        id_agent=self.id_sorted_cost[n]
-                        self.best_incentive[id_agent]=self.max_cost[id_agent]
+                if best_arm>=0:
+                    if est_mean_reward[best_arm]<math.inf:
+                        self.best_incentive=np.zeros((self.player.num_agent,))
+                        for n in range(best_arm+1):
+                            id_agent=self.id_sorted_cost[n]
+                            self.best_incentive[id_agent]=self.max_cost[id_agent]
+                            
         if info['curr_round']==info['max_round']:
             print("final incentive=",incentive)
             print("final num reward=",self.num_reward)
+            if self.bandit_alg['include_arm0']: print("num arm0=",info['max_round']-np.sum(self.num_reward))
         return incentive      
 
     def UCBlat_subroutine(self,max_round):
@@ -190,7 +214,14 @@ class IPA_full():
                 UCB[n]=1E6
             else:
                 UCB[n]=self.sum_reward[n]/self.num_reward[n]+2*np.sqrt(np.log(max_round)/self.num_reward[n])-self.cum_cost[n]
-        best_arm=int(np.argmax(UCB))
+        
+        if self.bandit_alg['include_arm0']: 
+            if np.max(UCB)<0:
+                best_arm=-1
+            else:
+                best_arm=int(np.argmax(UCB))
+        else:
+            best_arm=int(np.argmax(UCB))
         return best_arm
     
     def UCB1_subroutine(self,round):
@@ -200,7 +231,13 @@ class IPA_full():
                 UCB[n]=1E6
             else:
                 UCB[n]=self.sum_reward[n]/self.num_reward[n]+np.sqrt(2*np.log(round)/self.num_reward[n])-self.cum_cost[n]
-        best_arm=int(np.argmax(UCB))
+        if self.bandit_alg['include_arm0']: 
+            if np.max(UCB)<0:
+                best_arm=-1
+            else:
+                best_arm=int(np.argmax(UCB))
+        else:
+            best_arm=int(np.argmax(UCB))
         return best_arm
     
     def TS_subroutine(self):
@@ -209,7 +246,23 @@ class IPA_full():
             # Draw a sample from the Beta(alpha_i, beta_i) distribution
             sample = np.random.beta(self.alpha[n], self.beta[n])-self.cum_cost[n]
             sampled_thetas.append(sample)
-        best_arm=np.argmax(sampled_thetas)
+
+        if self.bandit_alg['include_arm0']: 
+            if np.max(sampled_thetas)<0:
+                best_arm=-1
+            else:
+                best_arm=int(np.argmax(sampled_thetas))
+        else:
+            best_arm=int(np.argmax(sampled_thetas))
+
+        if 'filtering_arm0_criteria' in self.bandit_alg:
+            if self.bandit_alg['filtering_arm0_criteria'] is not None:
+                if self.bandit_alg['filtering_arm0_criteria']=='Hoeffding-UCB': 
+                    if self.bandit_alg['filtering_arm0_para']=="1/T":
+                        delta=1/self.T
+                    UCB=self.cal_HoeffdingUCB(confidence_level=delta,arm=best_arm)
+                    if UCB<0:
+                        best_arm=-1
         return best_arm
     
 
@@ -232,7 +285,13 @@ class IPA_full():
                 
                 sampled_thetas.append(sample)
 
-        best_arm=np.argmax(sampled_thetas-self.cum_cost)
+        if self.bandit_alg['include_arm0']: 
+            if np.max(sampled_thetas-self.cum_cost)<0:
+                best_arm=-1
+            else:
+                best_arm=int(np.argmax(sampled_thetas-self.cum_cost))
+        else:
+            best_arm=int(np.argmax(sampled_thetas-self.cum_cost))
         return best_arm
     
     def concaveTS_subroutine(self,max_resampling_inc=1E7,max_resampling_concave=1E6):
@@ -264,7 +323,13 @@ class IPA_full():
                 
                 sampled_thetas.append(sample)
 
-        best_arm=np.argmax(sampled_thetas-self.cum_cost)
+        if self.bandit_alg['include_arm0']: 
+            if np.max(sampled_thetas-self.cum_cost)<0:
+                best_arm=-1
+            else:
+                best_arm=int(np.argmax(sampled_thetas-self.cum_cost))
+        else:
+            best_arm=int(np.argmax(sampled_thetas-self.cum_cost))
         return best_arm
     
     def UnimodalTS_subroutine(self):
@@ -284,28 +349,79 @@ class IPA_full():
         if best_mean<=0 and len(num0_list)>0:
             leader_arm=int(np.random.choice(num0_list))
         
-        if leader_arm==0:
-            neighbor_arm=[leader_arm,1]
-        elif leader_arm==self.player.num_agent-1:
-            neighbor_arm=[leader_arm-1,leader_arm]
+        if self.bandit_alg['include_arm0']: 
+            if best_mean<0:
+                leader_arm=-1
+            
+            if leader_arm==-1:
+                neighbor_arm=[leader_arm,0]
+            elif leader_arm==self.player.num_agent-1:
+                neighbor_arm=[leader_arm-1,leader_arm]
+            else:
+                neighbor_arm=[leader_arm-1,leader_arm,leader_arm+1]
+
+            if leader_arm==-1:
+                if self.num_leader_arm0 % len(neighbor_arm)==0:
+                    best_arm=-1
+                else:
+                    sampled_thetas = []
+                    for n in neighbor_arm:
+                        if n==-1:
+                            sample=0
+                        else:
+                            # Draw a sample from the Beta(alpha_i, beta_i) distribution
+                            sample = np.random.beta(self.alpha[n], self.beta[n])-self.cum_cost[n]
+                        sampled_thetas.append(sample)
+                    id_best_arm=np.argmax(sampled_thetas)
+                    best_arm=neighbor_arm[id_best_arm]
+                
+                self.num_leader_arm0+=1
+            else:
+                if self.num_leader_count[leader_arm] % len(neighbor_arm)==0:
+                    best_arm=int(leader_arm)
+                else:   
+                    sampled_thetas = []
+                    for n in neighbor_arm:
+                        # Draw a sample from the Beta(alpha_i, beta_i) distribution
+                        sample = np.random.beta(self.alpha[n], self.beta[n])-self.cum_cost[n]
+                        sampled_thetas.append(sample)
+                    id_best_arm=np.argmax(sampled_thetas)
+                    best_arm=neighbor_arm[id_best_arm]
+
+                self.num_leader_count[leader_arm]+=1
+        
         else:
-            neighbor_arm=[leader_arm-1,leader_arm,leader_arm+1]
+            if leader_arm==0:
+                neighbor_arm=[leader_arm,1]
+            elif leader_arm==self.player.num_agent-1:
+                neighbor_arm=[leader_arm-1,leader_arm]
+            else:
+                neighbor_arm=[leader_arm-1,leader_arm,leader_arm+1]
 
-        if self.num_leader_count[leader_arm] % len(neighbor_arm)==0:
-            best_arm=int(leader_arm)
-        else:   
-            sampled_thetas = []
-            for n in neighbor_arm:
-                # Draw a sample from the Beta(alpha_i, beta_i) distribution
-                sample = np.random.beta(self.alpha[n], self.beta[n])-self.cum_cost[n]
-                sampled_thetas.append(sample)
-            id_best_arm=np.argmax(sampled_thetas)
-            best_arm=neighbor_arm[id_best_arm]
+            if self.num_leader_count[leader_arm] % len(neighbor_arm)==0:
+                best_arm=int(leader_arm)
+            else:   
+                sampled_thetas = []
+                for n in neighbor_arm:
+                    # Draw a sample from the Beta(alpha_i, beta_i) distribution
+                    sample = np.random.beta(self.alpha[n], self.beta[n])-self.cum_cost[n]
+                    sampled_thetas.append(sample)
+                id_best_arm=np.argmax(sampled_thetas)
+                best_arm=neighbor_arm[id_best_arm]
 
-        self.num_leader_count[leader_arm]+=1
+            self.num_leader_count[leader_arm]+=1
+        
+        if 'filtering_arm0_criteria' in self.bandit_alg:
+            if self.bandit_alg['filtering_arm0_criteria'] is not None:
+                if self.bandit_alg['filtering_arm0_criteria']=='Hoeffding-UCB': 
+                    if self.bandit_alg['filtering_arm0_para']=="1/T":
+                        delta=1/self.T
+                    UCB=self.cal_HoeffdingUCB(confidence_level=delta,arm=best_arm)
+                    if UCB<0:
+                        best_arm=-1
         return best_arm
     
-    def incUnimodalTS_subroutine(self,max_resampling_inc=1E7):
+    def incUnimodalTS_subroutine(self,max_resampling_inc=1E7): #not add include0
         est_mean_reward=self.sum_reward/self.num_reward-self.cum_cost
         leader_arm=0
         best_mean=-math.inf
@@ -356,7 +472,7 @@ class IPA_full():
         self.num_leader_count[leader_arm]+=1
         return best_arm
     
-    def concaveUnimodalTS_subroutine(self,max_resampling_inc=1E7,max_resampling_concave=1E6):
+    def concaveUnimodalTS_subroutine(self,max_resampling_inc=1E7,max_resampling_concave=1E6): #not add include0
         est_mean_reward=self.sum_reward/self.num_reward-self.cum_cost
         leader_arm=0
         best_mean=-math.inf
@@ -414,7 +530,7 @@ class IPA_full():
         self.num_leader_count[leader_arm]+=1
         return best_arm
     
-    def IMED_UB_subroutine(self):
+    def IMED_UB_subroutine(self): #not add include0
         est_mean_reward=self.sum_reward/self.num_reward-self.cum_cost
         est_mean=self.sum_reward/self.num_reward
         leader_arm=0
@@ -451,7 +567,7 @@ class IPA_full():
                 best_arm=arm
         return best_arm
             
-    def OSUB_subroutine(self,curr_round):
+    def OSUB_subroutine(self,curr_round): #not add include0
         est_mean_reward=self.sum_reward/self.num_reward-self.cum_cost
         est_mean=self.sum_reward/self.num_reward
         leader_arm=0
@@ -512,6 +628,21 @@ class IPA_full():
         p = min(max(p, eps), 1 - eps)
         q = min(max(q, eps), 1 - eps)
         return p * math.log(p / q) + (1 - p) * math.log((1 - p) / (1 - q))
+    
+    #For UCB stopping-criteria calculation 
+    def cal_HoeffdingUCB(self,confidence_level,arm=None):
+        UCB=np.zeros((self.player.num_agent,))
+        for n in range(self.player.num_agent):
+            if self.num_reward[n]==0:
+                UCB[n]=1E6
+            else:
+                d=(6*confidence_level)/((math.pi**2)*self.player.num_agent*(self.num_reward[n]**2))
+                UCB[n]=self.sum_reward[n]/self.num_reward[n]+np.sqrt(np.log(2/d)/(self.num_reward[n]*2))-self.cum_cost[n]
+        if arm is None:
+            return UCB
+        else:
+            return UCB[arm]
+
     
     #For longEU calculation 
 
