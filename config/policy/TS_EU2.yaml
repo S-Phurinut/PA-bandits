@@ -1,7 +1,7 @@
 _target_ : policy.TS_EU.TS_EU
 type_arm : participation-based
-num_cost_learning : 0
-cost_alg : null #D-optimal #uniformly-space #null
+num_cost_learning : logT
+cost_alg : D-optimal #uniformly-space #null
 est_reward: TS #UCB-lattimore
 name : TS-EU
 num_optimiser : 16
@@ -10,4 +10,4 @@ model_training_appr : 10
 model_training_max_round_1step : 10
 is_model_known : False #True
 prior : null #['beta',['fixed',3],['fixed',1]] #['beta',['linear',1,2],['fixed',1]]s
-max_resampling_inc : null
+# max_resampling_inc : null

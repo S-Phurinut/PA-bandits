@@ -1,10 +1,10 @@
 defaults:
   - _self_
   - setting : MASA
-  - agent : logit_MDM5_s001
-  - policy : incTS_EU
-  - model : bayeslogit
-  - reward_generator : MASA_ber5
-num_sim : 1
-max_round : 10
-wandb_mode : offline
+  - agent : logit_MDM10_s001
+  - policy : gEU
+  - model : logit #bayeslogit
+  - reward_generator : MASA_ber10
+num_sim : 10
+max_round : 1000
+wandb_mode : online

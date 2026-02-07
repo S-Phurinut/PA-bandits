@@ -23,6 +23,8 @@ class Logit():
             for i in range(4):
                 if i==0:
                     x0=np.array([self.para_loc[agent],self.para_shape[agent]])
+                    x0[0]=np.clip(x0[0],0,1)
+                    x0[1]=np.clip(x0[1],0,10)
                 else:
                     x0=np.random.random(2,)
             

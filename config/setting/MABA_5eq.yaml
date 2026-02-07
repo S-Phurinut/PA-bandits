@@ -1,0 +1,5 @@
+_target_ : MABA_model.MABA_model
+num_agent : 5
+agent_cost : [0.02,0.02,0.02,0.02,0.02]
+type : null 
+init_seed_id : 0

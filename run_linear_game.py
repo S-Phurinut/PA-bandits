@@ -58,14 +58,12 @@ def main(config):
                             if "concave" in list(config.reward_generator['mean_prob_constraint']):
                                 sampled_reward=[0,float(np.random.rand())]
                                 for _ in range(1,N):
-                                    r=float(np.random.uniform(low=0,high=sampled_reward[-1]-sampled_reward[-2],size=1))
+                                    r=float(np.random.uniform(low=0,high=sampled_reward[-1]-sampled_reward[-2]))
                                     sampled_reward.append(sampled_reward[-1]+r)
                                 sampled_reward.pop(0)
                             else:
-                                sampled_reward=[float(np.random.rand())]
-                                for _ in range(1,N):
-                                    r=float(np.random.uniform(low=sampled_reward[-1],high=1,size=1))
-                                    sampled_reward.append(r)
+                                sampled_reward=np.random.rand(N,)
+                                sampled_reward=np.sort(sampled_reward)
                         else:
                             sampled_reward=np.random.rand(N,)
                     sampled_reward=np.clip(sampled_reward,0,1)

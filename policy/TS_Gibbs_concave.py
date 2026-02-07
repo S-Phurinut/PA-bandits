@@ -149,7 +149,7 @@ class TS_Gibbs_Concave():
                                 order = range(self.player.num_agent-1,-1,-1)
                         elif self.sweep_scan=='uniform':
                             order = np.random.permutation(self.player.num_agent)
-                        elif self.sweep_scan=='uniform':
+                        elif self.sweep_scan=='ordered':
                             order = range(self.player.num_agent)
                         
                         for i in order:

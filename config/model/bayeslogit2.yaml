@@ -1,0 +1,12 @@
+_target_ : model.BayesLogit.BayesLogit
+name : bayes-logit
+fitting_appr : one_agent
+buffer : 0
+max_workers : 2
+
+#For pymc packages
+pymc_draws : 2000
+pymc_tune : 1000
+pymc_target_accept : 0.9
+pymc_cores : 1
+pymc_chains : 1

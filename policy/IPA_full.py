@@ -88,7 +88,7 @@ class IPA_full():
                         self.alpha[n]+=1
                     else:
                         self.beta[n]+=1
-                    self.est_reward=self.alpha/(self.alpha+self.beta)*100000                
+                    self.est_reward=self.alpha/(self.alpha+self.beta)             
 
                     
                 
@@ -141,6 +141,8 @@ class IPA_full():
                         pulled_arm=self.UCBlat_subroutine(info['max_round'])
                     elif self.bandit_alg['bandit_alg']=='UCB1':
                         pulled_arm=self.UCB1_subroutine(info['curr_round'])
+                    elif self.bandit_alg['bandit_alg']=='incUCB1':
+                        pulled_arm=self.incUCB1_subroutine(info['curr_round'])
                     elif self.bandit_alg['bandit_alg']=='TS':
                         pulled_arm=self.TS_subroutine()
                     elif self.bandit_alg['bandit_alg']=='incTS':
@@ -231,6 +233,27 @@ class IPA_full():
                 UCB[n]=1E6
             else:
                 UCB[n]=self.sum_reward[n]/self.num_reward[n]+np.sqrt(2*np.log(round)/self.num_reward[n])-self.cum_cost[n]
+        print(UCB)
+        if self.bandit_alg['include_arm0']: 
+            if np.max(UCB)<0:
+                best_arm=-1
+            else:
+                best_arm=int(np.argmax(UCB))
+        else:
+            best_arm=int(np.argmax(UCB))
+        return best_arm
+    
+    def incUCB1_subroutine(self,round):
+        UCB=np.zeros((self.player.num_agent,))
+        for n in np.arange(self.player.num_agent-1,-1,-1):
+            if self.num_reward[n]==0:
+                UCB[n]=1E6
+            else:
+                UCB[n]=self.sum_reward[n]/self.num_reward[n]+np.sqrt(2*np.log(round)/self.num_reward[n])
+                UCB[n]=np.min(UCB[n:])
+        
+        UCB=UCB-self.cum_cost
+        print(UCB)
         if self.bandit_alg['include_arm0']: 
             if np.max(UCB)<0:
                 best_arm=-1
