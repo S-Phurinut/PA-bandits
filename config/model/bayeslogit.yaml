@@ -1,5 +1,6 @@
 _target_ : model.BayesLogit.BayesLogit
 name : bayes-logit
+fitting_appr : all_agents
 
 #For pymc packages
 pymc_draws : 500

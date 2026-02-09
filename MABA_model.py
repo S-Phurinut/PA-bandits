@@ -93,6 +93,13 @@ class MASA_model():
         self.agent_response_array=np.zeros((max_round,self.num_agent))
         self.reward_array=np.zeros((max_round,))
         self.EU_array=np.zeros((max_round,))
+        self.para_loc_array=np.zeros((max_round,self.num_agent))
+        self.para_shape_array=np.zeros((max_round,self.num_agent))
+
+        if self.policy.alg['model'].name=="bayes-logit":
+            self.var_loc_array=np.zeros((max_round,self.num_agent))
+            self.var_shape_array=np.zeros((max_round,self.num_agent))
+
 
         for t in tqdm(range(max_round)):
             self.policy.update_data(self)
@@ -109,7 +116,19 @@ class MASA_model():
             self.reward_array[t]=reward-cost
             self.EU_array[t]=-self.EU_value(cost=incentive)
 
-        return self.reward_array,self.agent_response_array,self.incentive_array, self.EU_array
+            if self.policy.alg['model'].name=="bayes-logit" and t>=1:
+                self.para_loc_array[t,:]=self.policy.alg['model'].u_mean
+                self.para_shape_array[t,:]=self.policy.alg['model'].s_mean
+                self.var_loc_array[t,:]=np.var(self.policy.alg['model'].u_sample,axis=0)
+                self.var_shape_array[t,:]=np.var(self.policy.alg['model'].s_sample,axis=0)
+            elif self.policy.alg['model'].name=="logit" and t>=1:
+                self.para_loc_array[t,:]=self.policy.alg['model'].para_loc
+                self.para_shape_array[t,:]=self.policy.alg['model'].para_shape
+        
+        if self.policy.alg['model'].name=="bayes-logit":
+            return self.reward_array,self.agent_response_array,self.incentive_array, self.EU_array,self.para_loc_array,self.para_shape_array,self.var_loc_array,self.var_shape_array
+        else:
+            return self.reward_array,self.agent_response_array,self.incentive_array, self.EU_array,self.para_loc_array,self.para_shape_array
 
 
     def optimal_solution(self):
@@ -121,8 +140,14 @@ class MASA_model():
             eps = 0 #float(1E-1)
             bnds = [(float(0 - eps), float(1 + eps)) for _ in range(self.num_agent)]
 
-            for _ in range(32):
-                x0=np.random.rand(self.num_agent,)
+            for i in range(32):
+                if i==0:
+                    x0=np.array(self.agent_policy.para_loc)+0.03
+                    print("EU value for true_loc+0.03=",-self.EU_value(x0)," with total cost=",np.sum(x0))
+                    pm=PoiBin(np.array(self.agent_policy.prob_accept(x0)))
+                    print("p=",[round(pm.pmf(j),3) for j in range(self.num_agent+1)])
+                else:
+                    x0=np.random.rand(self.num_agent,)
                 opt=sc.optimize.minimize(self.EU_value,x0=x0,bounds=bnds,tol=1E-12)
                 
                 cost=opt.x 

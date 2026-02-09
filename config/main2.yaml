@@ -4,7 +4,7 @@ defaults:
   - agent : logit_MDM10_s001
   - policy : gEU
   - model : logit #bayeslogit
-  - reward_generator : MASA_ber10
+  - reward_generator : MASA_ber10_2
 num_sim : 10
 max_round : 1000
 wandb_mode : online

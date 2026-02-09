@@ -48,16 +48,47 @@ class BayesLogit:
             self.u_mean=np.ones((self.num_agent,))*0.5
             self.s_mean=np.ones((self.num_agent,))*0.1
 
-            if self.model['fitting_appr']=='one_agent':
-                self.previous_data_id=0
-                self.X_ind=[]
-                self.Y_ind=[]
-                for _ in range(self.num_agent):
-                    self.X_ind.append([])
-                    self.Y_ind.append([])
+            # if self.model['fitting_appr']=='one_agent':
+            self.previous_data_id=0
+            self.X_ind=[]
+            self.Y_ind=[]
+            for _ in range(self.num_agent):
+                self.X_ind.append([])
+                self.Y_ind.append([])
             self.reset = False
+        
+        for agent in range(self.num_agent):
+            for i in range(self.previous_data_id,int(X.shape[0])):
+                if X[i,agent]>=self.buffer:
+                    self.X_ind[agent].append(X[i,agent])
+                    self.Y_ind[agent].append(Y[i,agent])
+        self.previous_data_id=int(X.shape[0])
 
         if self.model['fitting_appr']=='all_agents': #not consider cost buffer
+            #Least Square for Warm-start
+            best_loss=math.inf
+            u_LS=self.u_mean
+            s_LS=self.s_mean
+            for agent_id in range(self.num_agent):
+                for i in range(4):
+                    if i==0:
+                        x0=np.array([self.u_mean[agent_id],self.s_mean[agent_id]])
+                    else:
+                        x0=np.random.random(2,)
+
+                    bnds = [(0,1),(0,10)]
+                    opt=scipy.optimize.minimize(self.CE_loss,x0=x0,bounds=bnds,args=(np.array(self.X_ind[agent_id]),np.array(self.Y_ind[agent_id])),tol=1E-12)
+                    loss=-opt.fun
+
+                    if opt.x is not None and loss<best_loss:
+                        best_loss=loss
+                        u_LS[agent_id]=opt.x[0]
+                        s_LS[agent_id]=opt.x[1]
+
+            u_LS=np.clip(u_LS, 1e-8, 1 - 1e-8)
+            s_LS=np.clip(s_LS, 1e-8,1E4) 
+            print("warm-start=\n",u_LS,"\n",s_LS)
+
             with pm.Model() as model:
                 u = pm.Uniform("u", 0, 1, shape=self.num_agent)          # (N,) location parameter
                 s = pm.Exponential("s", lam=10, shape=self.num_agent)     # (N,) shape parameter
@@ -67,7 +98,9 @@ class BayesLogit:
                 p = pm.Deterministic("p", 1/(1+pm.math.exp(-z)))
                 y = pm.Bernoulli("y", p=p, observed=Y)      # observed is (T, N)
 
-                self.trace = pm.sample(draws=self.model['pymc_draws'], tune=self.model['pymc_tune'], chains=self.model['pymc_chains'], target_accept=self.model['pymc_target_accept'],cores=self.model['pymc_cores'])
+                self.trace = pm.sample(draws=self.model['pymc_draws'], tune=self.model['pymc_tune'],
+                                    chains=self.model['pymc_chains'], target_accept=self.model['pymc_target_accept'],
+                                    cores=self.model['pymc_cores'],init="adapt_diag",initvals={"u": u_LS, "s": s_LS},)
             
             self.u_sample=self.trace.posterior["u"].stack(draws=("chain","draw")).values.T
             self.s_sample=self.trace.posterior["s"].stack(draws=("chain","draw")).values.T
@@ -82,14 +115,6 @@ class BayesLogit:
             print("num_sample",self.u_sample.shape)
 
         elif self.model['fitting_appr']=='one_agent':
-            for agent in range(self.num_agent):
-                for i in range(self.previous_data_id,int(X.shape[0])):
-                    if X[i,agent]>=self.buffer:
-                        self.X_ind[agent].append(X[i,agent])
-                        self.Y_ind[agent].append(Y[i,agent])
-            self.previous_data_id=int(X.shape[0])
-         
-
             self.u_sample = np.zeros((int(self.model['pymc_draws']*self.model['pymc_chains']),self.num_agent))
             self.s_sample = np.zeros((int(self.model['pymc_draws']*self.model['pymc_chains']),self.num_agent))
 
