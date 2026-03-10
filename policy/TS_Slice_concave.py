@@ -4,14 +4,14 @@ from scipy.stats import beta as beta_dist
 import cvxpy as cp
 import math
 
-class TS_Gibbs_Monotone():
+class TS_Slice_Concave():
     def __init__(self,type_arm,num_cost_learning=1,cost_alg='MultiBinSearch',
-                 num_sweeps=10,random_scan=True,eps=1e-12,init_sweep_appr='once',**bandit_alg):
+                 num_sweeps=10,sweep_scan="linear",eps=1e-12,init_sweep_appr="once",**bandit_alg):
         self.type_arm=type_arm
         self.num_cost_learning=num_cost_learning
         self.cost_alg=cost_alg
         self.num_sweeps=num_sweeps #Number of full Gibbs sweeps
-        self.random_scan=random_scan #If True, update indices in a random permutation each sweep
+        self.sweep_scan=sweep_scan #If True, update indices in a random permutation each sweep
         self.eps=eps #Numerical safety margin for CDF inversion and interval clamping.
         self.init_sweep_appr=init_sweep_appr
 
@@ -100,105 +100,61 @@ class TS_Gibbs_Monotone():
                     pulled_arm=np.argmin(self.num_reward)
                 else:
                     if info['curr_round']%500==0:  
-                        # print(TS_sample)
                         print("num reward=",self.num_reward)
 
-                    if self.init_sweep_appr=="T":
-                        self.init_Gibb_sample=True
+                    # if self.init_sweep_appr=="T":
+                    #     self.init_Gibb_sample=True
 
-                    #------------init Gibbs sample by Monotone regression-----------------
-                    if self.init_Gibb_sample:
-                        n=self.player.num_agent
-                        f = cp.Variable(n)
-                        # constraints
-                        cons = []
-                        cons += [ f[0]>=0 ]
-                        # isotonic: f[i+1] >= f[i]
-                        cons += [f[i+1] - f[i] >= 0 for i in range(n-1)]
-                        # maximum prob <=1
-                        cons += [f[n-1] <= 1]
+                    # #------------init Gibbs sample by Monotone regression-----------------
+                    # if self.init_Gibb_sample:
+                    #     n=self.player.num_agent
+                    #     f = cp.Variable(n)
+                    #     # constraints
+                    #     cons = []
+                    #     cons += [ f[0]>=0 ]
+                    #     # isotonic: f[i+1] >= f[i]
+                    #     cons += [f[i+1] - f[i] >= 0 for i in range(n-1)]
+                    #     # concave: second differences <= 0
+                    #     cons += [f[1] - 2*f[0]  <= 0 ]
+                    #     cons += [f[i+2] - 2*f[i+1] + f[i] <= 0 for i in range(n-2)]
+                    #     # maximum prob <=1
+                    #     cons += [f[n-1] <= 1]
 
-                        # objective: least squares
-                        weights = np.zeros((n,))
-                        # weights[0] = 1.0
+                    #     # objective: least squares
+                    #     weights = np.zeros((n,))
+                    #     # weights[0] = 1.0
+                    #     TS_sample = np.zeros((n,))
+                    #     for n in range(self.player.num_agent):
+                    #         # Draw a sample from the Beta(alpha_i, beta_i) distribution
+                    #         TS_sample[n] = np.random.beta(self.alpha[n], self.beta[n])
 
-                        TS_sample = np.zeros((n,))
-                        for n in range(self.player.num_agent):
-                            # Draw a sample from the Beta(alpha_i, beta_i) distribution
-                            TS_sample[n] = np.random.beta(self.alpha[n], self.beta[n])
-                            # posterior variance of Beta(a,b)
-                            var = (self.alpha[n] * self.beta[n]) / (((self.alpha[n] + self.beta[n]) ** 2) * (self.alpha[n] + self.beta[n] + 1))
+                    #         var = (self.alpha[n] * self.beta[n]) / (((self.alpha[n] + self.beta[n]) ** 2) * (self.alpha[n] + self.beta[n] + 1))
 
-                            # inverse-variance weight
-                            weights[n] = 1.0 / max(var, 1e-12)
+                    #         # inverse-variance weight
+                    #         weights[n] = 1.0 / max(var, 1e-12)
 
-                        # is_sample_exist= np.ones((self.player.num_agent))
-                        # for n in range(self.player.num_agent):
-                        #     if self.num_reward[n]==0:
-                        #         is_sample_exist[n]=0
-                        # obj = cp.Minimize(cp.sum_squares(cp.multiply(np.concatenate(([1],is_sample_exist)),(TS_sample - f))))
-                        
-                        # normalize weights for numerical stability
-                        weights = weights / np.max(weights)
-                        obj = cp.Minimize(cp.sum(cp.multiply(weights, cp.square(TS_sample - f))))
+                    #     # normalize weights for numerical stability
+                    #     weights = weights / np.max(weights)
+                    #     if self.weighted_LS=="variance":
+                    #         obj = cp.Minimize(cp.sum(cp.multiply(weights, cp.square(TS_sample - f))))
+                    
+                    
+                    #     prob = cp.Problem(obj, cons)
+                    #     prob.solve(solver=cp.OSQP)
 
-                        prob = cp.Problem(obj, cons)
-                        prob.solve(solver=cp.OSQP)
+                    #     self.gibb_sample=np.array(f.value)
+                    #     if info['curr_round']%500==0:   print("init_MCLS=",self.gibb_sample)
+                    #     # print("init Gibb sample=",self.gibb_sample)
+                    #     self.init_Gibb_sample=False
 
-                        self.gibb_sample=np.array(f.value) #[1:]
-                        if info['curr_round']%500==0:   print("init_MLS=",self.gibb_sample)
-                        self.init_Gibb_sample=False
-
-
-                    for _ in range(self.num_sweeps):
-                        if self.random_scan:
-                            order = np.random.permutation(self.player.num_agent)
-                        else:
-                            order = range(self.player.num_agent)
-                        
-                        for i in order:
-                            L = 0.0 if i == 0 else self.gibb_sample[i - 1]
-                            U = 1.0 if i == self.player.num_agent - 1 else self.gibb_sample[i + 1]
-
-                            # Clamp interval into [0,1] and ensure nonempty numerically
-                            L = float(np.clip(L, 0.0, 1.0))
-                            U = float(np.clip(U, 0.0, 1.0))
-                            if U < L:
-                                # This should not happen if mu is monotone, but guard anyway.
-                                L, U = U, L
-
-                            # If interval is essentially a point, just set to midpoint
-                            if U - L <=self.eps:
-                                self.gibb_sample[i] = 0.5 * (L + U)
-                                continue
-
-                            a_i, b_i = float(self.alpha[i]), float(self.beta[i])
-
-                            # Truncated Beta via inverse CDF sampling:
-                            # u ~ Uniform(F(L), F(U)), mu_i = F^{-1}(u)
-                            FL = beta_dist.cdf(L, a_i, b_i)
-                            FU = beta_dist.cdf(U, a_i, b_i)
-
-                            # Numerical safety: keep within [0,1] and avoid FL==FU issues
-                            FL = float(np.clip(FL, 0.0, 1.0))
-                            FU = float(np.clip(FU, 0.0, 1.0))
-
-                            if FU - FL <=self.eps:
-                                self.gibb_sample[i] = 0.5 * (L + U)
-                                continue
-
-                            u = np.random.uniform(FL +self.eps, FU -self.eps) if (FU - FL) > 2 *self.eps else np.random.uniform(FL, FU)
-                            self.gibb_sample[i] = float(beta_dist.ppf(u, a_i, b_i))
-
-                            # Final clamp (rarely needed) and enforce local monotonicity
-                            if self.gibb_sample[i] < L:
-                                self.gibb_sample[i] = L
-                            elif self.gibb_sample[i] > U:
-                                self.gibb_sample[i] = U
+                    self.gibb_sample=sample_concave_once(self.alpha-1,self.alpha+self.beta-2)
                             
 
 
-                    if info['curr_round']%500==0:   print("gibb_sample=",self.gibb_sample)
+                    if info['curr_round']%500==0:   
+                        print("s/m=",(self.alpha-1)/(self.alpha+self.beta-2))
+                        print("m=",self.alpha+self.beta-2)
+                        print("gibb_sample=",self.gibb_sample)
 
                     #---------------Greedy alg-----------------
                     best_utility=-math.inf
@@ -243,4 +199,64 @@ class TS_Gibbs_Monotone():
         return incentive    
 
             
-                
+def u_to_f(u):
+    delta = np.cumsum(u[::-1])[::-1]
+    return np.cumsum(delta)
+
+def log_post(u, s, m, eps=1e-12):
+    n = len(u)
+    j = np.arange(1, n + 1)
+
+    if np.any(u < 0):
+        return -np.inf
+    if np.dot(j, u) >= 1:
+        return -np.inf
+
+    f = u_to_f(u)
+    if np.any(f <= 0) or np.any(f >= 1):
+        return -np.inf
+
+    f = np.clip(f, eps, 1 - eps)
+    return np.sum(s * np.log(f) + (m - s) * np.log(1 - f))
+
+def slice_update(u, idx, s, m, w=0.02):
+    n = len(u)
+    j = np.arange(1, n + 1)
+
+    current = u[idx]
+    logy = log_post(u, s, m) + np.log(np.random.rand())
+
+    other_sum = np.dot(j, u) - (idx + 1) * current
+    upper = max(0.0, (1.0 - other_sum) / (idx + 1))
+
+    L = max(0.0, current - w * np.random.rand())
+    R = min(upper, L + w)
+    L = max(0.0, R - w)
+
+    while True:
+        x = np.random.uniform(L, R)
+        u_try = u.copy()
+        u_try[idx] = x
+
+        if log_post(u_try, s, m) >= logy:
+            return u_try
+
+        if x < current:
+            L = x
+        else:
+            R = x
+
+def sample_concave_once(s, m, sweeps=50, u_init=None):
+    n = len(s)
+
+    if u_init is None:
+        u = np.zeros(n)
+        u[0] = 0.5 / n
+    else:
+        u = u_init.copy()
+
+    for _ in range(sweeps):
+        for idx in np.random.permutation(n):
+            u = slice_update(u, idx, s, m)
+
+    return u_to_f(u)

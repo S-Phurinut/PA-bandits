@@ -9,9 +9,10 @@ name : IPA-full
 is_reward_known : False
 is_cost_known : False #True
 num_sweeps : 20
-sweep_scan : "linear"
+sweep_scan : uniform
 eps : 1e-12
-min_sample_required : 0 #1
+init_sweep_appr : T
+init_sweep_weighted_LS : variance
+min_sample_required : 0
 stopping_criteria : null
 include_arm0 : True
-init_sweep_appr : T

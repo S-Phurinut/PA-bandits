@@ -97,8 +97,9 @@ class gEU(): #EU with agent approx model
                         train_model=True
 
                 if train_model:
-                     self.alg['model'].fit(X=self.player.incentive_array[:(info['curr_round']-1),:],Y=self.player.agent_response_array[:(info['curr_round']-1),:])
-
+                    self.alg['model'].fit(X=self.player.incentive_array[:(info['curr_round']-1),:],Y=self.player.agent_response_array[:(info['curr_round']-1),:])
+                    print("logit model_para=",self.alg['model'].para_loc,self.alg['model'].para_shape)
+                
                 if info['curr_round']==self.num_cost_learning:
                     print("logit model_para=",self.alg['model'].para_loc,self.alg['model'].para_shape)
                     self.is_model_training_done=True
@@ -126,9 +127,12 @@ class gEU(): #EU with agent approx model
             if self.cost_alg=="uniformly-space":
                 best_cost=np.ones((self.player.num_agent,))*self.cost_list[int(info['curr_round']-1)]
             elif self.cost_alg=="D-optimal":
-                best_cost=np.clip(self.D_optimal(),0,1)
+                best_cost=np.clip(self.D_optimal(info['curr_round']),0,1)
+                print("D-optimal next point=",best_cost)
             elif self.cost_alg=="A-optimal":
                 pass
+            elif self.cost_alg=="ex-BinSearch2":
+                best_cost=np.clip(self.exBinSearch2(info['curr_round'],self.num_cost_learning),0,1)
         else:  
             self.is_cost_learning_done=True      
             #====================Contracting Part============================
@@ -175,11 +179,11 @@ class gEU(): #EU with agent approx model
 
                 for i in range(0,self.num_optimiser):
                     if i==0:
-                        x0=self.previous_c
+                        x0=np.clip(self.previous_c,0.0,1.0)
                     else:
                         x0=np.clip(np.random.rand(self.player.num_agent,),0.1,0.9)
 
-                    opt=sc.optimize.minimize(self.EU_value,x0=x0,bounds=bnds,args=(est_reward),tol=1E-12) #,method="SLSQP"
+                    opt=sc.optimize.minimize(self.EU_value,x0=x0,bounds=bnds,args=(est_reward)) #,method="SLSQP"
                     cost=opt.x
                     EU=-opt.fun
                     if cost is not None and EU>best_EU:
@@ -293,25 +297,123 @@ class gEU(): #EU with agent approx model
 
 
 
-    
-    def D_optimal(self):
-        if self.reset:
-            self.count=0
-
-        if self.count%2==0:
-            if self.alg['model'].name=="logit" :
-                if self.alg['model'].para_type=="loc-shape":
-                    self.x_mid=self.alg['model'].para_loc
-                    self.b=1/self.alg['model'].para_shape
-            elif self.alg['model'].name=="bayes-logit":
-                if self.alg['model'].para_type=="loc-shape":
-                    self.x_mid=self.alg['model'].u_mean
-                    self.b=1/self.alg['model'].s_mean
-            x=self.x_mid+(1.543/self.b)
+    def D_optimal(self,curr_round):
+        next_x=np.ones((self.player.num_agent,))
+        init_x=[0.001,0.01,0.1]
+        if curr_round<=3:
+            return next_x*init_x[int(curr_round-1)]
         else:
-            x=self.x_mid-(1.543/self.b)
-        self.count+=1
-        return x
+            for agent in range(self.player.num_agent):
+                u = self.alg['model'].para_loc[agent]
+                s = self.alg['model'].para_shape[agent]
+                z = (self.player.incentive_array[:(curr_round-1),agent] - u) / s
+                p = 1.0 / (1.0 + np.exp(-z))
+                w = p * (1.0 - p)
+
+                S0 = float(np.sum(w))
+                S1 = float(np.sum(w * z))
+                S2 = float(np.sum(w * z * z))
+
+                M_n = (1.0 / (s * s)) * np.array([[S0, S1],
+                                                [S1, S2]], dtype=float)
+
+                # Stabilize (helpful early)
+                M_n += float(1E-6) * np.eye(2)
+
+                # u,s = self.alg['model'].u_mean[agent], self.alg['model'].s_mean[agent]
+                # data=np.stack((self.alg['model'].u_sample[:,agent].reshape(-1,),self.alg['model'].s_sample[:,agent].reshape(-1,)))
+                # cov = np.cov(data)
+
+                best_x, best_val = 0.5, -1e300
+                for i in range(16):
+                    if i==0:
+                        x=u
+                    else:
+                        x=float(np.random.rand())/5
+                    bnds=[(0.0,1.0),]
+                    opt=sc.optimize.minimize(self.dopt_score,x0=np.array([x]),bounds=bnds,args=(u,s,M_n))
+                    val=-opt.fun
+                    if val > best_val:
+                        best_x=opt.x[0]
+                        best_val=val
+                next_x[agent]=best_x
+            
+            return next_x
+    
+    def dopt_score(self,x, u, s, M):
+        x = float(x[0])
+        s = float(s)
+        if not np.isfinite(s) or s <= 0:
+            return 1e300
+
+        z = (x - u) / s
+        z = (x - u) / s
+        p = 1.0 / (1.0 + np.exp(-z))
+        w = p * (1.0 - p)
+
+        # Per-point Fisher info in (u,s)
+        I_x = (w / (s * s)) * np.array([[1.0, z],
+                                        [z,   z * z]], dtype=float)
+
+        M_next = M + I_x
+
+        sign, ld = np.linalg.slogdet(M_next)
+        if sign <= 0 or not np.isfinite(ld):
+            return 1e300  # penalize non-PD / numerical issues
+
+        return -ld
+
+    # def dopt_score(self,x, u, s,Minv):
+    #     """
+    #     Incremental D-opt score:
+    #     A(x) = log(1 + w(x) * g(x)^T Sigma_theta g(x))
+    #     """
+    #     x = float(x)
+    #     z = (x - u) / s
+    #     zc = np.clip(z, -60.0, 60.0)
+    #     p = 1.0 / (1.0 + np.exp(-zc))
+    #     w = p * (1.0 - p)
+
+    #     # g = d eta / d (u,s)
+    #     g = np.array([-1.0 / s, -(x - u) / (s * s)], dtype=float)
+
+    #     quad = float(g.T @ Minv @ g)
+    #     return -math.log(1.0 + w * quad)
+    
+        # du = u * (1.0 - u)
+        # ds = s * (1.0 - s)
+
+        # d_eta_du = -1.0 / s
+        # d_eta_ds = -(x - u) / (s * s)
+
+        # g0 = d_eta_du * du
+        # g1 = d_eta_ds * ds
+        # g = np.array([g0, g1], dtype=float)
+
+        # p = 1.0 / (1.0 + np.exp(-(x - u) / s))
+        # w = p * (1.0 - p)
+
+        # s_quad = float(g.T @ np.linalg.inv(M) @ g)
+        # return -math.log(1.0 + w * s_quad)
+    
+    # def D_optimal(self):
+    #     if self.reset:
+    #         self.count=0
+
+    #     if self.count%2==0:
+    #         if self.alg['model'].name=="logit" :
+    #             if self.alg['model'].para_type=="loc-shape":
+    #                 self.x_mid=self.alg['model'].para_loc
+    #                 self.b=1/self.alg['model'].para_shape
+    #         elif self.alg['model'].name=="bayes-logit":
+    #             if self.alg['model'].para_type=="loc-shape":
+    #                 self.x_mid=self.alg['model'].u_mean
+    #                 self.b=1/self.alg['model'].s_mean
+    #         x=self.x_mid+(1.543/self.b)
+    #     else:
+    #         x=self.x_mid-(1.543/self.b)
+    #     self.count+=1
+    #     return x
 
 
 
@@ -322,5 +424,16 @@ class gEU(): #EU with agent approx model
     
             
 
-
+    def exBinSearch2(self,curr_round,max_cost_round):
+        x=np.ones((self.player.num_agent,))/self.player.num_agent
+        if curr_round>1:
+            for i in range(self.player.num_agent):
+                # if np.sum(self.player.agent_response_array[:curr_round-2,i])==0 or np.sum(self.player.agent_response_array[:curr_round-1,i])==curr_round-2:
+                if self.player.agent_response_array[curr_round-2,i]==0:
+                    x[i]=(self.player.incentive_array[curr_round-2,i])+(1-(1/self.player.num_agent))/(max_cost_round-1)
+                else:
+                    x[i]=(self.player.incentive_array[curr_round-2,i])-(1-(1/self.player.num_agent))/(max_cost_round-1)
+        print("exBinSearch at cost=",x)
+        return x
+                
                 

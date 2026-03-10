@@ -146,9 +146,9 @@ class IPA_full():
                     elif self.bandit_alg['bandit_alg']=='TS':
                         pulled_arm=self.TS_subroutine()
                     elif self.bandit_alg['bandit_alg']=='incTS':
-                        pulled_arm=self.incTS_subroutine(max_resampling_inc=self.bandit_alg['max_resampling_inc'])
+                        pulled_arm=self.incTS_subroutine(curr_round=info['curr_round'],max_resampling_inc=self.bandit_alg['max_resampling_inc'])
                     elif self.bandit_alg['bandit_alg']=='concaveTS':
-                        pulled_arm=self.concaveTS_subroutine(max_resampling_inc=self.bandit_alg['max_resampling_inc'],max_resampling_concave=self.bandit_alg['max_resampling_concave'])
+                        pulled_arm=self.concaveTS_subroutine(curr_round=info['curr_round'],max_resampling_inc=self.bandit_alg['max_resampling_inc'],max_resampling_concave=self.bandit_alg['max_resampling_concave'])
                     elif self.bandit_alg['bandit_alg']=='UTS':
                         pulled_arm=self.UnimodalTS_subroutine()
                     elif self.bandit_alg['bandit_alg']=='incUTS':
@@ -289,7 +289,7 @@ class IPA_full():
         return best_arm
     
 
-    def incTS_subroutine(self,max_resampling_inc=1E7):
+    def incTS_subroutine(self,curr_round,max_resampling_inc=1E7):
         if max_resampling_inc is None: max_resampling_inc=1E7
         resampling=True
         count_inc=-1
@@ -305,8 +305,11 @@ class IPA_full():
                     break
                 else:
                     resampling=False
-                
+
                 sampled_thetas.append(sample)
+
+        if count_inc>max_resampling_inc:
+            print("At round ",curr_round," cannot find inc TS sample within limited budget")
 
         if self.bandit_alg['include_arm0']: 
             if np.max(sampled_thetas-self.cum_cost)<0:
@@ -317,7 +320,7 @@ class IPA_full():
             best_arm=int(np.argmax(sampled_thetas-self.cum_cost))
         return best_arm
     
-    def concaveTS_subroutine(self,max_resampling_inc=1E7,max_resampling_concave=1E6):
+    def concaveTS_subroutine(self,curr_round,max_resampling_inc=1E7,max_resampling_concave=1E6):
         if max_resampling_inc is None: max_resampling_inc=1E7
         if max_resampling_concave is None: max_resampling_concave=1E6
         resampling=True
@@ -345,6 +348,12 @@ class IPA_full():
                         resampling=False
                 
                 sampled_thetas.append(sample)
+
+        if count_cave>max_resampling_concave:
+            if count_inc>max_resampling_inc:
+                print("At round ",curr_round," cannot find inc TS sample within limited budget")
+            else:
+                print("At round ",curr_round," cannot find concave TS sample within limited budget")
 
         if self.bandit_alg['include_arm0']: 
             if np.max(sampled_thetas-self.cum_cost)<0:

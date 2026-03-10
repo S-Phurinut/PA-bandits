@@ -74,10 +74,11 @@ class MABA_model():
                 id_agent=int(index_sort[n])
                 optimal_incentive[id_agent]=self.cost[id_agent]
             optimal_utility=best_net_reward
-            print("true_net_reward=",self.reward_generator.mean-cum_cost)
-            print("optimal_num_agent=",optimal_number," with incentive=",optimal_incentive)
+            true_net_reward=self.reward_generator.mean-cum_cost
+            # print("true_net_reward=",self.reward_generator.mean-cum_cost)
+            # print("optimal_num_agent=",optimal_number," with incentive=",optimal_incentive)
 
-            return optimal_incentive, optimal_utility
+            return optimal_incentive, optimal_utility,optimal_number,true_net_reward
         
 
 class MASA_model():
@@ -140,14 +141,14 @@ class MASA_model():
             eps = 0 #float(1E-1)
             bnds = [(float(0 - eps), float(1 + eps)) for _ in range(self.num_agent)]
 
-            for i in range(32):
+            for i in range(128):
                 if i==0:
                     x0=np.array(self.agent_policy.para_loc)+0.03
                     print("EU value for true_loc+0.03=",-self.EU_value(x0)," with total cost=",np.sum(x0))
                     pm=PoiBin(np.array(self.agent_policy.prob_accept(x0)))
                     print("p=",[round(pm.pmf(j),3) for j in range(self.num_agent+1)])
                 else:
-                    x0=np.random.rand(self.num_agent,)
+                    x0=np.random.rand(self.num_agent,)/self.num_agent
                 opt=sc.optimize.minimize(self.EU_value,x0=x0,bounds=bnds,tol=1E-12)
                 
                 cost=opt.x 
@@ -159,6 +160,8 @@ class MASA_model():
                     optimal_utility=EU
 
             print("optimal_incentive=",optimal_incentive," with EU=",optimal_utility)
+            pm=PoiBin(np.array(self.agent_policy.prob_accept(optimal_incentive)))
+            print("p=",[round(pm.pmf(j),3) for j in range(self.num_agent+1)])
             return optimal_incentive, optimal_utility
         
     def EU_value(self,cost):

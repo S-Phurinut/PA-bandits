@@ -28,6 +28,7 @@ class TS_Gibbs_Concave():
         self.bandit_alg=bandit_alg
         self.init_Gibb_sample=True
         self.reset=True
+        self.weighted_LS=bandit_alg['init_sweep_weighted_LS']
 
     def update_data(self,player):
         self.player=player
@@ -98,7 +99,7 @@ class TS_Gibbs_Concave():
                 if np.sum(self.num_reward<self.bandit_alg['min_sample_required'])>0:
                     pulled_arm=np.argmin(self.num_reward)
                 else:
-                    if info['curr_round']%1000==0:  
+                    if info['curr_round']%500==0:  
                         print("num reward=",self.num_reward)
 
                     if self.init_sweep_appr=="T":
@@ -106,36 +107,43 @@ class TS_Gibbs_Concave():
 
                     #------------init Gibbs sample by Monotone regression-----------------
                     if self.init_Gibb_sample:
-                        n=self.player.num_agent+1
+                        n=self.player.num_agent
                         f = cp.Variable(n)
                         # constraints
                         cons = []
-                        cons += [ f[0]==0 ]
+                        cons += [ f[0]>=0 ]
                         # isotonic: f[i+1] >= f[i]
                         cons += [f[i+1] - f[i] >= 0 for i in range(n-1)]
                         # concave: second differences <= 0
+                        cons += [f[1] - 2*f[0]  <= 0 ]
                         cons += [f[i+2] - 2*f[i+1] + f[i] <= 0 for i in range(n-2)]
                         # maximum prob <=1
                         cons += [f[n-1] <= 1]
 
                         # objective: least squares
-
-                        TS_sample = np.zeros((self.player.num_agent+1,))
+                        weights = np.zeros((n,))
+                        # weights[0] = 1.0
+                        TS_sample = np.zeros((n,))
                         for n in range(self.player.num_agent):
                             # Draw a sample from the Beta(alpha_i, beta_i) distribution
-                            TS_sample[n+1] = np.random.beta(self.alpha[n], self.beta[n])
+                            TS_sample[n] = np.random.beta(self.alpha[n], self.beta[n])
 
-                        is_sample_exist= np.ones((self.player.num_agent))
-                        for n in range(self.player.num_agent):
-                            if self.num_reward[n]==0:
-                                is_sample_exist[n]=0
-                        obj = cp.Minimize(cp.sum_squares(cp.multiply(np.concatenate(([1],is_sample_exist)),(TS_sample - f))))
+                            var = (self.alpha[n] * self.beta[n]) / (((self.alpha[n] + self.beta[n]) ** 2) * (self.alpha[n] + self.beta[n] + 1))
+
+                            # inverse-variance weight
+                            weights[n] = 1.0 / max(var, 1e-12)
+
+                        # normalize weights for numerical stability
+                        weights = weights / np.max(weights)
+                        if self.weighted_LS=="variance":
+                            obj = cp.Minimize(cp.sum(cp.multiply(weights, cp.square(TS_sample - f))))
                     
                     
                         prob = cp.Problem(obj, cons)
                         prob.solve(solver=cp.OSQP)
 
-                        self.gibb_sample=np.array(f.value)[1:]
+                        self.gibb_sample=np.array(f.value)
+                        if info['curr_round']%500==0:   print("init_MCLS=",self.gibb_sample)
                         # print("init Gibb sample=",self.gibb_sample)
                         self.init_Gibb_sample=False
 
@@ -207,7 +215,7 @@ class TS_Gibbs_Concave():
                             
 
 
-                    if info['curr_round']%1000==0:   print("gibb_sample=",self.gibb_sample)
+                    if info['curr_round']%500==0:   print("gibb_sample=",self.gibb_sample)
 
                     #---------------Greedy alg-----------------
                     best_utility=-math.inf

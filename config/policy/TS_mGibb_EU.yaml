@@ -6,7 +6,8 @@ est_reward: TS-Gibb-monotone
 name : TS-EU
 num_optimiser : 16
 is_reward_known : False
-model_training_appr : T
+model_training_appr : 10
+model_training_max_round_1step : 10
 is_model_known : False #True
 prior : null #['beta',['fixed',3],['fixed',1]] #['beta',['linear',1,2],['fixed',1]]s
 

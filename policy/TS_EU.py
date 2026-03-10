@@ -36,6 +36,7 @@ class TS_EU(): #EU with agent approx model
         self.num_optimiser=alg['num_optimiser']
         self.is_cost_learning_done=False
         self.is_model_training_done=False
+        self.need_model_training=True
         self.reset=True
 
     def update_data(self,player):
@@ -43,6 +44,7 @@ class TS_EU(): #EU with agent approx model
 
     def run(self,**info):
         if info['curr_round']==1 and self.reset:
+            self.need_model_training=True
             self.is_cost_learning_done=False
             self.is_model_training_done=False
             self.previous_c=np.ones((self.player.num_agent,))*0.5
@@ -78,12 +80,11 @@ class TS_EU(): #EU with agent approx model
             elif self.alg['est_reward']=="increasing-TS" or self.alg['est_reward']=="concave-TS":
                 self.input=[]
                 self.output=[]
-
-            
         else:
             self.reset=False
+            self.alg['model'].update_data(X=self.player.incentive_array[:(info['curr_round']-1),:],Y=self.player.agent_response_array[:(info['curr_round']-1),:])
             #----------Update agent model learning----------
-            if info['curr_round']>1 and self.is_model_known==False:
+            if info['curr_round']>1 and self.is_model_known==False and self.need_model_training==True:
                 train_model=False
                 if type(self.alg['model_training_appr'])==int:
                     if (info['curr_round']-1)%self.alg['model_training_appr']==0 or info['curr_round']<=self.alg['model_training_max_round_1step'] :
@@ -95,7 +96,7 @@ class TS_EU(): #EU with agent approx model
                         train_model=True
 
                 if train_model:
-                     self.alg['model'].fit(X=self.player.incentive_array[:(info['curr_round']-1),:],Y=self.player.agent_response_array[:(info['curr_round']-1),:])
+                     self.alg['model'].fit()
 
                 if info['curr_round']==self.num_cost_learning:
                     # print("logit model_para=",self.alg['model'].para_loc,self.alg['model'].para_shape)
@@ -119,16 +120,26 @@ class TS_EU(): #EU with agent approx model
                     self.output.append(info['previous_reward'])
 
         if info['curr_round']<=self.num_cost_learning:
-            if info['curr_round']==self.num_cost_learning:
-                self.is_cost_learning_done=True
-
             if self.cost_alg=="uniformly-space":
                 best_cost=np.ones((self.player.num_agent,))*self.cost_list[int(info['curr_round']-1)]
+                self.need_model_training=False
             elif self.cost_alg=="D-optimal":
-                best_cost=np.clip(self.D_optimal(),0,1)
+                best_cost=np.clip(self.D_optimal(curr_round=info['curr_round']),0,1)
+                self.need_model_training=True
             elif self.cost_alg=="A-optimal":
                 pass
-        else:  
+            elif self.cost_alg=="ex-BinSearch":
+                best_cost=np.clip(self.exBinSearch(info['curr_round']),0,1)
+                self.need_model_training=False
+            elif self.cost_alg=="ex-BinSearch2":
+                best_cost=np.clip(self.exBinSearch2(info['curr_round'],self.num_cost_learning),0,1)
+                self.need_model_training=False
+
+            if info['curr_round']==self.num_cost_learning:
+                self.is_cost_learning_done=True
+                self.need_model_training=True
+        else:
+            self.need_model_training=True  
             self.is_cost_learning_done=True      
             #====================Contracting Part============================
             if self.type_arm=='participation-based':
@@ -309,7 +320,7 @@ class TS_EU(): #EU with agent approx model
 
         return np.array(p_all)
     
-    def D_optimal(self):
+    def D_optimal(self,curr_round):
         if self.reset:
             self.count=0
 
@@ -327,7 +338,46 @@ class TS_EU(): #EU with agent approx model
             x=self.x_mid-(1.543/self.b)
         self.count+=1
         return x
+    
+    # def D_optimal(self,curr_round):
+    #     if self.reset:
+    #         self.loss_array=np.zeros((self.player.num_agent,))
+    #         self.count=1
+        
+    #     x=np.ones((self.player.num_agent,))/self.player.num_agent
 
+    #     if self.count%2==0 :
+    #         if self.alg['model'].name=="logit" :
+    #             if self.alg['model'].para_type=="loc-shape":
+    #                 self.x_mid=self.alg['model'].para_loc
+    #                 self.b=self.alg['model'].para_shape
+    #         elif self.alg['model'].name=="bayes-logit":
+    #             if self.alg['model'].para_type=="loc-shape":
+    #                 self.x_mid=np.zeros((self.player.num_agent,))
+    #                 self.b=np.zeros((self.player.num_agent,))
+    #                 for i in range(self.player.num_agent):
+    #                     self.x_mid[i],self.b[i],self.loss_array[i]=self.alg['model'].get_MLE_estimator(agent_id=i)
+        
+            
+        
+    #     for i in range(self.player.num_agent):
+    #         if curr_round>1:
+    #             if self.loss_array[i]==math.inf or np.sum(self.player.agent_response_array[:curr_round-2,i])==0 or np.sum(self.player.agent_response_array[:curr_round-1,i])==curr_round-2:
+    #                 if self.player.agent_response_array[curr_round-2,i]==0:
+    #                     x[i]=(self.player.incentive_array[curr_round-2,i])+0.5/self.player.num_agent
+    #                 else:
+    #                     x[i]=(self.player.incentive_array[curr_round-2,i])/2
+    #                 print("agent=",i," offer=",x[i])
+    #                 print(self.loss_array[i])
+    #             else:
+    #                 if self.count%2==0:
+    #                     x[i]=self.x_mid[i]+(1.543*self.b[i])
+    #                 else:
+    #                     x[i]=self.x_mid[i]-(1.543*self.b[i])
+
+    #     self.count+=1
+    #     print("D_optimal at cost=",x)
+    #     return x
 
 
 
@@ -337,5 +387,27 @@ class TS_EU(): #EU with agent approx model
     
             
 
-
+    def exBinSearch(self,curr_round):
+        x=np.ones((self.player.num_agent,))/self.player.num_agent
+        if curr_round>1:
+            for i in range(self.player.num_agent):
+                # if np.sum(self.player.agent_response_array[:curr_round-2,i])==0 or np.sum(self.player.agent_response_array[:curr_round-1,i])==curr_round-2:
+                if self.player.agent_response_array[curr_round-2,i]==0:
+                    x[i]=(self.player.incentive_array[curr_round-2,i])+0.5/self.player.num_agent
+                else:
+                    x[i]=(self.player.incentive_array[curr_round-2,i])/2
+        print("exBinSearch at cost=",x)
+        return x
+    
+    def exBinSearch2(self,curr_round,max_cost_round):
+        x=np.ones((self.player.num_agent,))/self.player.num_agent
+        if curr_round>1:
+            for i in range(self.player.num_agent):
+                # if np.sum(self.player.agent_response_array[:curr_round-2,i])==0 or np.sum(self.player.agent_response_array[:curr_round-1,i])==curr_round-2:
+                if self.player.agent_response_array[curr_round-2,i]==0:
+                    x[i]=(self.player.incentive_array[curr_round-2,i])+(1-(1/self.player.num_agent))/(max_cost_round-1)
+                else:
+                    x[i]=(self.player.incentive_array[curr_round-2,i])-(1-(1/self.player.num_agent))/(max_cost_round-1)
+        print("exBinSearch at cost=",x)
+        return x
                 

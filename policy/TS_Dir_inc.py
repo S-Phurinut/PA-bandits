@@ -1,19 +1,20 @@
 import numpy as np
-import scipy as sc
 from scipy.stats import beta as beta_dist
-import cvxpy as cp
+import scipy.signal
+import scipy.signal.windows
+
+# Patch older import name for PyMC compatibility
+if not hasattr(scipy.signal, "gaussian"):
+    scipy.signal.gaussian = scipy.signal.windows.gaussian
+import pymc as pm
 import math
 
-class TS_Gibbs_Monotone():
+class TS_Dirichlet_increment():
     def __init__(self,type_arm,num_cost_learning=1,cost_alg='MultiBinSearch',
-                 num_sweeps=10,random_scan=True,eps=1e-12,init_sweep_appr='once',**bandit_alg):
+                 dir_para=0.5,**bandit_alg):
         self.type_arm=type_arm
         self.num_cost_learning=num_cost_learning
         self.cost_alg=cost_alg
-        self.num_sweeps=num_sweeps #Number of full Gibbs sweeps
-        self.random_scan=random_scan #If True, update indices in a random permutation each sweep
-        self.eps=eps #Numerical safety margin for CDF inversion and interval clamping.
-        self.init_sweep_appr=init_sweep_appr
 
         if 'is_cost_known' in bandit_alg:
             self.is_cost_known=bandit_alg['is_cost_known']
@@ -26,9 +27,10 @@ class TS_Gibbs_Monotone():
             self.is_reward_known=False
         
         self.bandit_alg=bandit_alg
-        self.init_Gibb_sample=True
         self.reset=True
-        self.weighted_LS=bandit_alg['init_sweep_weighted_LS']
+        self.dir_para=dir_para
+
+        
 
     def update_data(self,player):
         self.player=player
@@ -47,7 +49,15 @@ class TS_Gibbs_Monotone():
             if self.num_cost_learning=='log2T': self.num_cost_learning=math.ceil(np.log2(info['max_round']))
             self.alpha=np.ones((self.player.num_agent,))
             self.beta=np.ones((self.player.num_agent,))
-            self.init_Gibb_sample=True
+            
+            if type(self.dir_para)==str:
+                if self.dir_para=="Global-Jeffreys":
+                    self.dir_para=np.ones((self.player.num_agent+1,))/(self.player.num_agent+1)
+            elif type(self.dir_para)==list:
+                self.dir_para=np.array(self.dir_para)
+            else:
+                self.dir_para=np.ones((self.player.num_agent+1,))*self.dir_para
+            self.fit_first_model=True
             self.reset=False
         else:
 
@@ -99,112 +109,63 @@ class TS_Gibbs_Monotone():
                 if np.sum(self.num_reward<self.bandit_alg['min_sample_required'])>0:
                     pulled_arm=np.argmin(self.num_reward)
                 else:
-                    if info['curr_round']%500==0:  
-                        # print(TS_sample)
-                        print("num reward=",self.num_reward)
-
-                    if self.init_sweep_appr=="T":
-                        self.init_Gibb_sample=True
-
-                    #------------init Gibbs sample by Monotone regression-----------------
-                    if self.init_Gibb_sample:
-                        n=self.player.num_agent
-                        f = cp.Variable(n)
-                        # constraints
-                        cons = []
-                        cons += [ f[0]>=0 ]
-                        # isotonic: f[i+1] >= f[i]
-                        cons += [f[i+1] - f[i] >= 0 for i in range(n-1)]
-                        # maximum prob <=1
-                        cons += [f[n-1] <= 1]
-
-                        # objective: least squares
-                        weights = np.zeros((n,))
-                        # weights[0] = 1.0
-
-                        TS_sample = np.zeros((n,))
-                        for n in range(self.player.num_agent):
-                            # Draw a sample from the Beta(alpha_i, beta_i) distribution
-                            TS_sample[n] = np.random.beta(self.alpha[n], self.beta[n])
-                            # posterior variance of Beta(a,b)
-                            var = (self.alpha[n] * self.beta[n]) / (((self.alpha[n] + self.beta[n]) ** 2) * (self.alpha[n] + self.beta[n] + 1))
-
-                            # inverse-variance weight
-                            weights[n] = 1.0 / max(var, 1e-12)
-
-                        # is_sample_exist= np.ones((self.player.num_agent))
-                        # for n in range(self.player.num_agent):
-                        #     if self.num_reward[n]==0:
-                        #         is_sample_exist[n]=0
-                        # obj = cp.Minimize(cp.sum_squares(cp.multiply(np.concatenate(([1],is_sample_exist)),(TS_sample - f))))
-                        
-                        # normalize weights for numerical stability
-                        weights = weights / np.max(weights)
-                        obj = cp.Minimize(cp.sum(cp.multiply(weights, cp.square(TS_sample - f))))
-
-                        prob = cp.Problem(obj, cons)
-                        prob.solve(solver=cp.OSQP)
-
-                        self.gibb_sample=np.array(f.value) #[1:]
-                        if info['curr_round']%500==0:   print("init_MLS=",self.gibb_sample)
-                        self.init_Gibb_sample=False
-
-
-                    for _ in range(self.num_sweeps):
-                        if self.random_scan:
-                            order = np.random.permutation(self.player.num_agent)
+                    refit_model=True
+                    if self.bandit_alg['refit_step']=="adaptive-log10":
+                        refit_step=max(int(10**(math.floor(np.log10(info['curr_round'])))),1)
+                        if info['curr_round']%refit_step==0  or info['curr_round']<=self.bandit_alg['refit_max_round_1step'] :
+                            refit_model=True
                         else:
-                            order = range(self.player.num_agent)
-                        
-                        for i in order:
-                            L = 0.0 if i == 0 else self.gibb_sample[i - 1]
-                            U = 1.0 if i == self.player.num_agent - 1 else self.gibb_sample[i + 1]
+                            refit_model=False
 
-                            # Clamp interval into [0,1] and ensure nonempty numerically
-                            L = float(np.clip(L, 0.0, 1.0))
-                            U = float(np.clip(U, 0.0, 1.0))
-                            if U < L:
-                                # This should not happen if mu is monotone, but guard anyway.
-                                L, U = U, L
+                    if type(self.bandit_alg['refit_step'])==int:
+                        if (info['curr_round']-1)%int(self.bandit_alg['refit_step'])==0 or info['curr_round']<=self.bandit_alg['refit_max_round_1step'] :
+                            refit_model=True
+                        else:
+                            refit_model=False
 
-                            # If interval is essentially a point, just set to midpoint
-                            if U - L <=self.eps:
-                                self.gibb_sample[i] = 0.5 * (L + U)
-                                continue
+                    if self.fit_first_model:
+                        refit_model=True
+                        self.fit_first_model=False
 
-                            a_i, b_i = float(self.alpha[i]), float(self.beta[i])
+                    if refit_model:
+                        with pm.Model() as model:
+                            # Positive latent variables
+                            g = pm.Gamma("g", alpha=self.dir_para, beta=1.0, shape=self.player.num_agent + 1)
 
-                            # Truncated Beta via inverse CDF sampling:
-                            # u ~ Uniform(F(L), F(U)), mu_i = F^{-1}(u)
-                            FL = beta_dist.cdf(L, a_i, b_i)
-                            FU = beta_dist.cdf(U, a_i, b_i)
+                            # Normalize to simplex
+                            p = pm.Deterministic("p", g / pm.math.sum(g))
 
-                            # Numerical safety: keep within [0,1] and avoid FL==FU issues
-                            FL = float(np.clip(FL, 0.0, 1.0))
-                            FU = float(np.clip(FU, 0.0, 1.0))
+                            # Monotone probabilities:
+                            # f(1)=p[0], f(2)=p[0]+p[1], ..., f(N)=p[0]+...+p[N-1]
+                            f = pm.Deterministic("f", pm.math.cumsum(p)[:-1])
 
-                            if FU - FL <=self.eps:
-                                self.gibb_sample[i] = 0.5 * (L + U)
-                                continue
+                            # Binomial likelihood at each x
+                            pm.Binomial("obs", n=self.alpha+self.beta-2, p=f, observed=self.alpha-1)
 
-                            u = np.random.uniform(FL +self.eps, FU -self.eps) if (FU - FL) > 2 *self.eps else np.random.uniform(FL, FU)
-                            self.gibb_sample[i] = float(beta_dist.ppf(u, a_i, b_i))
+                            # NUTS
+                            idata = pm.sample(
+                                draws=self.bandit_alg['pymc_draws'],          # keep only one posterior draw
+                                tune=self.bandit_alg['pymc_tune'],        # warmup / adaptation
+                                chains=self.bandit_alg['pymc_chains'],
+                                cores=self.bandit_alg['pymc_cores'],
+                                target_accept=self.bandit_alg['pymc_target_accept'],
+                            )
 
-                            # Final clamp (rarely needed) and enforce local monotonicity
-                            if self.gibb_sample[i] < L:
-                                self.gibb_sample[i] = L
-                            elif self.gibb_sample[i] > U:
-                                self.gibb_sample[i] = U
-                            
+                        self.f_sample = idata.posterior["f"].values[0, :]
 
+                    index=np.random.randint(0,self.f_sample.shape[0])
+                    sample=self.f_sample[index]
+                    
 
-                    if info['curr_round']%500==0:   print("gibb_sample=",self.gibb_sample)
+                    if info['curr_round']%500==0:
+                        print("TS_sample=",sample)      
+                        print("num reward=",self.num_reward)
 
                     #---------------Greedy alg-----------------
                     best_utility=-math.inf
                     pulled_arm=0
                     for arm in range(self.player.num_agent):
-                        utility=self.gibb_sample[arm]-self.cum_cost[arm]
+                        utility=sample[arm]-self.cum_cost[arm]
                         if utility>best_utility:
                             pulled_arm=arm
                             best_utility=utility

@@ -6,7 +6,7 @@ bandit_alg: TS-MCLS
 name : IPA-full
 is_reward_known : False
 is_cost_known : False #True
-need_weighted_LS : False #True
-min_sample_required : 1
+weighted_LS : "variance" #True
+min_sample_required : 0 #3
 stopping_criteria : null
 include_arm0 : True

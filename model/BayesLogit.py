@@ -34,7 +34,6 @@ class BayesLogit:
 
         if 'fitting_appr' not in self.model:
             self.model['fitting_appr']='all_agents'
-
         if "buffer" not in self.model:
             self.buffer=0
         else:
@@ -42,8 +41,11 @@ class BayesLogit:
                 self.buffer=0
             else:
                 self.buffer=self.model['buffer']
+        self.previous_data_id=0
 
-    def fit(self, X, Y):
+    def update_data(self,X,Y):
+        self.X=X
+        self.Y=Y
         if self.reset:
             self.u_mean=np.ones((self.num_agent,))*0.5
             self.s_mean=np.ones((self.num_agent,))*0.1
@@ -64,43 +66,29 @@ class BayesLogit:
                     self.Y_ind[agent].append(Y[i,agent])
         self.previous_data_id=int(X.shape[0])
 
+    def fit(self):
         if self.model['fitting_appr']=='all_agents': #not consider cost buffer
             #Least Square for Warm-start
-            best_loss=math.inf
-            u_LS=self.u_mean
-            s_LS=self.s_mean
+            self.u_LS=np.array(self.u_mean)
+            self.s_LS=np.array(self.s_mean)
             for agent_id in range(self.num_agent):
-                for i in range(4):
-                    if i==0:
-                        x0=np.array([self.u_mean[agent_id],self.s_mean[agent_id]])
-                    else:
-                        x0=np.random.random(2,)
-
-                    bnds = [(0,1),(0,10)]
-                    opt=scipy.optimize.minimize(self.CE_loss,x0=x0,bounds=bnds,args=(np.array(self.X_ind[agent_id]),np.array(self.Y_ind[agent_id])),tol=1E-12)
-                    loss=-opt.fun
-
-                    if opt.x is not None and loss<best_loss:
-                        best_loss=loss
-                        u_LS[agent_id]=opt.x[0]
-                        s_LS[agent_id]=opt.x[1]
-
-            u_LS=np.clip(u_LS, 1e-8, 1 - 1e-8)
-            s_LS=np.clip(s_LS, 1e-8,1E4) 
-            print("warm-start=\n",u_LS,"\n",s_LS)
+                self.u_LS[agent_id],self.s_LS[agent_id]=self.get_MLE_estimator(agent_id)
+            self.s_LS=np.clip(self.s_LS,1e-3,2)
+            print("MLE est=\n",self.u_LS,"\n",self.s_LS)
+            
 
             with pm.Model() as model:
                 u = pm.Uniform("u", 0, 1, shape=self.num_agent)          # (N,) location parameter
-                s = pm.Exponential("s", lam=10, shape=self.num_agent)     # (N,) shape parameter
+                s = pm.Exponential("s", lam=self.model['shape_prior'][1], shape=self.num_agent)     # (N,) shape parameter
 
-                z = (X - u) / s          # (T, N)
+                z = (self.X - u) / s          # (T, N)
     
                 p = pm.Deterministic("p", 1/(1+pm.math.exp(-z)))
-                y = pm.Bernoulli("y", p=p, observed=Y)      # observed is (T, N)
-
+                y = pm.Bernoulli("y", p=p, observed=self.Y)      # observed is (T, N)
+ 
                 self.trace = pm.sample(draws=self.model['pymc_draws'], tune=self.model['pymc_tune'],
                                     chains=self.model['pymc_chains'], target_accept=self.model['pymc_target_accept'],
-                                    cores=self.model['pymc_cores'],init="adapt_diag",initvals={"u": u_LS, "s": s_LS},)
+                                    cores=self.model['pymc_cores']) #,init="adapt_diag",initvals={"u": self.u_LS, "s": self.s_LS},)
             
             self.u_sample=self.trace.posterior["u"].stack(draws=("chain","draw")).values.T
             self.s_sample=self.trace.posterior["s"].stack(draws=("chain","draw")).values.T
@@ -110,7 +98,55 @@ class BayesLogit:
             self.s_mean=self.s_sample.mean(axis=0) 
             # self.s_mean=np.ones((self.num_agent,))*0.01 
 
-            print("\n new data=",X[-1,:],Y[-1,:])
+            # print("\n new data=",X[-1,:],Y[-1,:])
+            print("posterior_mean=",self.u_mean,self.s_mean)
+            print("num_sample",self.u_sample.shape)
+        
+        elif type(self.model['fitting_appr'])==int: 
+            #Least Square for Warm-start
+            self.u_LS=np.array(self.u_mean)
+            self.s_LS=np.array(self.s_mean)
+            for agent_id in range(self.num_agent):
+                self.u_LS[agent_id],self.s_LS[agent_id]=self.get_MLE_estimator(agent_id)
+            self.s_LS=np.clip(self.s_LS,1e-3,2)
+            print("MLE est=\n",self.u_LS,"\n",self.s_LS)
+            
+            count_init=0
+            count_end=0
+            self.u_sample=np.zeros((int(self.model['pymc_draws']*self.model['pymc_chains']),self.num_agent))
+            self.s_sample=np.zeros((int(self.model['pymc_draws']*self.model['pymc_chains']),self.num_agent))
+            for t in range(math.ceil(self.num_agent/self.model['fitting_appr'])):
+                if t==0:
+                    if int(self.num_agent%self.model['fitting_appr'])==0:
+                        num_para=int(self.model['fitting_appr'])
+                    else:
+                        num_para=int(self.num_agent%self.model['fitting_appr'])
+                else:
+                    num_para=int(self.model['fitting_appr'])
+                count_end+=num_para
+                with pm.Model() as model:
+                    u = pm.Uniform("u", 0, 1, shape=num_para)          # (N,) location parameter
+                    s = pm.Exponential("s", lam=self.model['shape_prior'][1], shape=num_para)     # (N,) shape parameter
+
+                    z = (self.X[:,count_init:count_end] - u) / s          # (T, N)
+        
+                    p = pm.Deterministic("p", 1/(1+pm.math.exp(-z)))
+                    y = pm.Bernoulli("y", p=p, observed=self.Y[:,count_init:count_end])      # observed is (T, N)
+    
+                    self.trace = pm.sample(draws=self.model['pymc_draws'], tune=self.model['pymc_tune'],
+                                        chains=self.model['pymc_chains'], target_accept=self.model['pymc_target_accept'],
+                                        cores=self.model['pymc_cores']) #,init="adapt_diag",initvals={"u": self.u_LS, "s": self.s_LS},)
+            
+                self.u_sample[:,count_init:count_end]=self.trace.posterior["u"].stack(draws=("chain","draw")).values.T
+                self.s_sample[:,count_init:count_end]=self.trace.posterior["s"].stack(draws=("chain","draw")).values.T
+                # self.s_sample=np.ones((self.num_agent,))*0.01 
+            
+                self.u_mean[count_init:count_end]=self.u_sample[:,count_init:count_end].mean(axis=0) 
+                self.s_mean[count_init:count_end]=self.s_sample[:,count_init:count_end].mean(axis=0) 
+                # self.s_mean=np.ones((self.num_agent,))*0.01 
+                count_init=count_init+num_para
+
+            # print("\n new data=",X[-1,:],Y[-1,:])
             print("posterior_mean=",self.u_mean,self.s_mean)
             print("num_sample",self.u_sample.shape)
 
@@ -134,42 +170,53 @@ class BayesLogit:
             self.s_mean=self.s_sample.mean(axis=0) 
             # self.s_mean=np.ones((self.num_agent,))*0.01 
 
-            print("\n new data=",X[-1,:],Y[-1,:])
+            # print("\n new data=",self.X[-1,:],self.Y[-1,:])
             print("posterior_mean=",self.u_mean,self.s_mean)
             print("num_sample",self.u_sample.shape)
 
-    def fit_one_agent(self,agent_id,X,Y):
-        if len(Y)==0:
-            u_sample=np.random.uniform(low=0,high=1,size=int(self.model['pymc_draws']*self.model['pymc_chains']))
-            s_sample=np.random.exponential(scale=10,size=int(self.model['pymc_draws']*self.model['pymc_chains']))
+    def get_MLE_estimator(self,agent_id):
+        if self.previous_data_id==0:
+            return self.u_mean[agent_id],self.s_mean[agent_id]
         else:
-
-            #Least Square for Warm-start
             best_loss=math.inf
             u_LS=self.u_mean[agent_id]
             s_LS=self.s_mean[agent_id]
+
             for i in range(4):
                 if i==0:
-                    x0=np.array([self.u_mean[agent_id],self.s_mean[agent_id]])
+                    x0=np.array([u_LS,s_LS])
                 else:
-                    x0=np.random.random(2,)
+                    x0=np.random.random(2,)/10
 
-                bnds = [(0,1),(0,10)]
-                opt=scipy.optimize.minimize(self.CE_loss,x0=x0,bounds=bnds,args=(np.array(X),np.array(Y)),tol=1E-12)
-                loss=-opt.fun
+                bnds = [(0,1),(-math.inf,math.inf)]
+                opt=scipy.optimize.minimize(self.CE_loss,x0=x0,bounds=bnds,args=(np.array(self.X_ind[agent_id]),np.array(self.Y_ind[agent_id])),tol=1E-12)
+                loss=opt.fun
 
                 if opt.x is not None and loss<best_loss:
                     best_loss=loss
                     u_LS=opt.x[0]
                     s_LS=opt.x[1]
-            u_LS=float(np.clip(u_LS, 1e-8, 1 - 1e-8))
-            s_LS=float(max(s_LS, 1e-8))
-            print("warm-start",[agent_id,u_LS,s_LS])
-            # print(X)
+
+            u_LS=np.clip([u_LS], 1e-8, 1 - 1e-8)[0]
+            s_LS=np.clip([s_LS], 1e-8,1E4)[0]
+            return u_LS,s_LS
+
+
+
+    def fit_one_agent(self,agent_id,X,Y):
+        if len(Y)==0:
+            u_sample=np.random.uniform(low=0,high=1,size=int(self.model['pymc_draws']*self.model['pymc_chains']))
+            s_sample=np.random.exponential(scale=self.model['shape_prior'][1],size=int(self.model['pymc_draws']*self.model['pymc_chains']))
+        else:
+
+            #Least Square for Warm-start
+            # u_LS, s_LS= self.get_MLE_estimator(agent_id)
+            # print("warm-start",[agent_id,u_LS,s_LS])
+            # # print(X)
 
             with pm.Model() as model:
                 u = pm.Uniform("u", 0, 1)          # location parameter
-                s = pm.Exponential("s", lam=10)     # shape parameter
+                s = pm.Exponential("s", lam=self.model['shape_prior'][1])     # shape parameter
 
                 z = (np.array(X) - u) / s          # (T, N)
 
@@ -178,7 +225,7 @@ class BayesLogit:
 
                 trace = pm.sample(draws=self.model['pymc_draws'], tune=self.model['pymc_tune'],
                                 chains=self.model['pymc_chains'], target_accept=self.model['pymc_target_accept'],
-                                cores=self.model['pymc_cores'],init="adapt_diag",initvals={"u": u_LS, "s": s_LS},)
+                                cores=self.model['pymc_cores'],) #init="adapt_diag",initvals={"u": u_LS, "s": s_LS},)
                 u_sample=trace.posterior["u"].stack(draws=("chain","draw")).values.T
                 s_sample=trace.posterior["s"].stack(draws=("chain","draw")).values.T
         return agent_id, u_sample, s_sample
@@ -215,6 +262,8 @@ class BayesLogit:
 
     def CE_loss(self,para,X,y):
         # Binary cross-entropy loss
-        y_pred = 1/(1+np.exp(-(X-para[0])/para[1]))
-        loss = np.mean(y * np.log(y_pred) + (1 - y) * np.log(1 - y_pred))
-        return -loss
+        y_pred = expit((X-para[0])/para[1])
+        eps = 1e-12
+        y_pred = np.clip(y_pred, eps, 1 - eps)
+        loss = np.sum(y * np.log(y_pred) + (1 - y) * np.log(1 - y_pred))
+        return -loss 

@@ -3,12 +3,12 @@ import scipy as sc
 import cvxpy as cp
 import math
 
-class TS_Monotone_Concave_LeastSquare():
+class TS_Monotone_MLE():
     def __init__(self,type_arm,num_cost_learning=1,cost_alg='MultiBinSearch',**bandit_alg):
         self.type_arm=type_arm
         self.num_cost_learning=num_cost_learning
         self.cost_alg=cost_alg
-        self.weighted_LS=bandit_alg['weighted_LS']
+
         if 'is_cost_known' in bandit_alg:
             self.is_cost_known=bandit_alg['is_cost_known']
         else:
@@ -93,49 +93,22 @@ class TS_Monotone_Concave_LeastSquare():
                     
                     n=self.player.num_agent
                     f = cp.Variable(n)
-                    # constraints
-                    cons = []
-                    cons += [ f[0]>=0 ]
-                    # isotonic: f[i+1] >= f[i]
-                    cons += [f[i+1] - f[i] >= 0 for i in range(n-1)]
-                    # concave: second differences <= 0
-                    cons += [f[1] - 2*f[0]  <= 0 ]
-                    cons += [f[i+2] - 2*f[i+1] + f[i] <= 0 for i in range(n-2)]
-                    # maximum prob <=1
-                    cons += [f[n-1] <= 1]
 
-                    # objective: least squares
-                    weights = np.zeros((n,))
-                    # weights[0] = 1.0
-                    TS_sample = np.zeros((n,))
-                    for n in range(self.player.num_agent):
-                        # Draw a sample from the Beta(alpha_i, beta_i) distribution
-                        TS_sample[n] = np.random.beta(self.alpha[n], self.beta[n])
+                    obj = cp.sum(cp.multiply(self.alpha-1, cp.log(f)) +
+                                cp.multiply(self.beta-1, cp.log(1 - f)))
 
-                        var = (self.alpha[n] * self.beta[n]) / (((self.alpha[n] + self.beta[n]) ** 2) * (self.alpha[n] + self.beta[n] + 1))
+                    constraints = [
+                        f >= 0,
+                        f <= 1
+                    ]
 
-                        # inverse-variance weight
-                        weights[n] = 1.0 / max(var, 1e-12)
+                    # monotone
+                    for i in range(n - 1):
+                        constraints.append(f[i+1] >= f[i])
 
-                    
 
-                    # normalize weights for numerical stability
-                    weights = weights / np.max(weights)
-                    if self.weighted_LS=="variance":
-                        obj = cp.Minimize(cp.sum(cp.multiply(weights, cp.square(TS_sample - f))))
-                
-                    # if self.need_weighted_LS:
-                    #     obj = cp.Minimize(cp.sum_squares(cp.multiply(np.concatenate(([1],self.num_reward)),(TS_sample - f))))
-                    # else:
-                    #     is_sample_exist= np.ones((self.player.num_agent))
-                    #     for n in range(self.player.num_agent):
-                    #         if self.num_reward[n]==0:
-                    #             is_sample_exist[n]=0
-                    #     obj = cp.Minimize(cp.sum_squares(cp.multiply(np.concatenate(([1],is_sample_exist)),(TS_sample - f))))
-                    
-                    
-                    prob = cp.Problem(obj, cons)
-                    prob.solve(solver=cp.OSQP)
+                    prob = cp.Problem(cp.Maximize(obj), constraints)
+                    prob.solve()
                     est_fun=lambda x : f.value[x]
 
                     # print("est success prob=",f.value)
@@ -154,7 +127,7 @@ class TS_Monotone_Concave_LeastSquare():
                             pulled_arm=-1
 
                     if info['curr_round']%500==0:  
-                        print("MCLS=",np.array(f.value))
+                        print("Mono_MLE=",np.array(f.value))
                         print("num reward=",self.num_reward)
                 #------------Turn arm into incentive-----------
                 incentive=np.zeros((self.player.num_agent,))

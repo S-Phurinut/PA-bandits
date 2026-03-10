@@ -1,0 +1,24 @@
+_target_ : policy.TS_Dir_inc.TS_Dirichlet_increment
+type_arm : participation-based
+num_cost_learning : log2T
+cost_alg : MultiBinSearch
+
+bandit_alg: TS-Dirichlet-increment
+name : IPA-full
+
+is_reward_known : False
+is_cost_known : False #True
+dir_para : 1
+
+refit_step : adaptive-log10
+refit_max_round_1step : 0 #20 
+
+min_sample_required : 0
+stopping_criteria : null
+include_arm0 : True
+
+pymc_draws : 500
+pymc_tune : 500
+pymc_target_accept : 0.9
+pymc_cores : 1
+pymc_chains : 2

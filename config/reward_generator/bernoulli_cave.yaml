@@ -1,0 +1,8 @@
+_target_ : Reward_generator.Participation_based_Reward
+type_dist : Bernoulli
+mean_prob : null
+mean_prob_constraint : ["dirichlet-concave"]
+alpha : 0.1
+success_value : 1
+type : random
+

@@ -1,0 +1,6 @@
+_target_ : MABA_model.MABA_model
+num_agent : 10 #provide practically uniform dist over increasing func
+agent_cost : 'random'
+agent_cost_dist : ['linear',3]
+type : "uniform-best-arm"
+init_seed_id : 0

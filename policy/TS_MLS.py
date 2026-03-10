@@ -8,7 +8,7 @@ class TS_Monotone_LeastSquare():
         self.type_arm=type_arm
         self.num_cost_learning=num_cost_learning
         self.cost_alg=cost_alg
-        self.need_weighted_LS=bandit_alg['need_weighted_LS']
+        self.weighted_LS=bandit_alg['weighted_LS']
         if 'is_cost_known' in bandit_alg:
             self.is_cost_known=bandit_alg['is_cost_known']
         else:
@@ -90,37 +90,48 @@ class TS_Monotone_LeastSquare():
                 if np.sum(self.num_reward<self.bandit_alg['min_sample_required'])>0:
                     pulled_arm=np.argmin(self.num_reward)
                 else:
-                    n=self.player.num_agent+1
+                    
+                
+                    # if self.need_weighted_LS:
+                    #     obj = cp.Minimize(cp.sum_squares(cp.multiply(np.concatenate(([1],self.num_reward)),(TS_sample - f))))
+                    # else:
+                    #     is_sample_exist= np.ones((self.player.num_agent))
+                    #     for n in range(self.player.num_agent):
+                    #         if self.num_reward[n]==0:
+                    #             is_sample_exist[n]=0
+                    #     obj = cp.Minimize(cp.sum_squares(cp.multiply(np.concatenate(([1],is_sample_exist)),(TS_sample - f))))
+                    
+                    
+                    n=self.player.num_agent
                     f = cp.Variable(n)
                     # constraints
                     cons = []
-                    cons += [ f[0]==0 ]
+                    cons += [ f[0]>=0 ]
                     # isotonic: f[i+1] >= f[i]
                     cons += [f[i+1] - f[i] >= 0 for i in range(n-1)]
                     # maximum prob <=1
                     cons += [f[n-1] <= 1]
 
                     # objective: least squares
+                    weights = np.zeros((n,))
+                    # weights[0] = 1.0
 
-                    TS_sample = np.zeros((self.player.num_agent+1,))
+                    TS_sample = np.zeros((n,))
                     for n in range(self.player.num_agent):
                         # Draw a sample from the Beta(alpha_i, beta_i) distribution
-                        TS_sample[n+1] = np.random.beta(self.alpha[n], self.beta[n])
+                        TS_sample[n] = np.random.beta(self.alpha[n], self.beta[n])
+                        # posterior variance of Beta(a,b)
+                        var = (self.alpha[n] * self.beta[n]) / (((self.alpha[n] + self.beta[n]) ** 2) * (self.alpha[n] + self.beta[n] + 1))
 
-                    if info['curr_round']%1000==0:  
-                        # print(TS_sample)
-                        print("num reward=",self.num_reward)
-                
-                    if self.need_weighted_LS:
-                        obj = cp.Minimize(cp.sum_squares(cp.multiply(np.concatenate(([1],self.num_reward)),(TS_sample - f))))
-                    else:
-                        is_sample_exist= np.ones((self.player.num_agent))
-                        for n in range(self.player.num_agent):
-                            if self.num_reward[n]==0:
-                                is_sample_exist[n]=0
-                        obj = cp.Minimize(cp.sum_squares(cp.multiply(np.concatenate(([1],is_sample_exist)),(TS_sample - f))))
-                    
-                    
+                        # inverse-variance weight
+                        weights[n] = 1.0 / max(var, 1e-12)
+
+
+                    # normalize weights for numerical stability
+                    weights = weights / np.max(weights)
+                    if self.weighted_LS=="variance":
+                        obj = cp.Minimize(cp.sum(cp.multiply(weights, cp.square(TS_sample - f))))
+
                     prob = cp.Problem(obj, cons)
                     prob.solve(solver=cp.OSQP)
                     est_fun=lambda x : f.value[x]
@@ -131,7 +142,7 @@ class TS_Monotone_LeastSquare():
                     best_utility=-math.inf
                     pulled_arm=0
                     for arm in range(self.player.num_agent):
-                        utility=est_fun(arm+1)-self.cum_cost[arm]
+                        utility=est_fun(arm)-self.cum_cost[arm]
                         if utility>best_utility:
                             pulled_arm=arm
                             best_utility=utility
@@ -139,6 +150,10 @@ class TS_Monotone_LeastSquare():
                     if self.bandit_alg['include_arm0']:
                         if best_utility<0:
                             pulled_arm=-1
+                    
+                    if info['curr_round']%500==0:  
+                        print("MLS=",np.array(f.value))
+                        print("num reward=",self.num_reward)
                 
                 #------------Turn arm into incentive-----------
                 incentive=np.zeros((self.player.num_agent,))

@@ -1,12 +1,11 @@
-_target_ : policy.TS_MLS.TS_Monotone_LeastSquare
+_target_ : policy.TS_MCMLE.TS_Monotone_Concave_MLE
 type_arm : participation-based
 num_cost_learning : log2T
 cost_alg : MultiBinSearch
-bandit_alg: TS-MLS
+bandit_alg: TS-MCMLE
 name : IPA-full
 is_reward_known : False
 is_cost_known : False #True
-weighted_LS : "variance" #True
-min_sample_required : 1 #3
+min_sample_required : 0 #3
 stopping_criteria : null
 include_arm0 : True

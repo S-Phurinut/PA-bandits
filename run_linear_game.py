@@ -10,6 +10,17 @@ warnings.filterwarnings('ignore')  # Suppress all warnings
 
 warnings.warn("This warning will be hidden")
 
+import os
+os.environ["WANDB__SERVICE"] = "wandb-core"
+os.environ["WANDB_START_METHOD"] = "thread"
+os.environ["PYTENSOR_FLAGS"] = (
+    "compiledir=/tmp/pytensor_unique,"
+    "verbosity=low"
+    "linker=py,"
+    "optimizer=fast_compile"
+)
+
+
 
 @hydra.main(version_base=None,config_path="config", config_name="main")
 def main(config):
@@ -17,7 +28,7 @@ def main(config):
     #Instantitate wandb and log info of configurations 
     log_config=pd.json_normalize(OmegaConf.to_object(config),sep='/')
     log_config=log_config.to_dict(orient='records')[0]
-    wandb.init(project ="PA_bandits",config=log_config, mode=config.wandb_mode, entity="s_phurinut",settings=wandb.Settings(start_method="thread"))
+    wandb.init(project ="PA_bandits",config=log_config, mode=config.wandb_mode, entity="s_phurinut", settings=wandb.Settings(init_timeout=120))
     
     M=config.num_sim
     T=config.max_round
@@ -35,7 +46,8 @@ def main(config):
 
     total_incentive_array=np.zeros((M,T))
     l1_dist_total_incentive_array=np.zeros((M,T))
-
+    reset=True
+    num_optimal_array=np.ones((N+1))
     try:
         #Set environment of the simulations from YAML files
         for sim in range(0,M):
@@ -49,33 +61,55 @@ def main(config):
                                     principal_policy=Policy,
                                     Reward_generator=Reward_generator)
 
-            
             resampling=True
             while resampling:
                 if config.reward_generator['type']=='random':
                     if "uniform" in list(config.reward_generator['mean_prob_constraint']):
                         if "increasing" in list(config.reward_generator['mean_prob_constraint']):
                             if "concave" in list(config.reward_generator['mean_prob_constraint']):
-                                sampled_reward=[0,float(np.random.rand())]
-                                for _ in range(1,N):
-                                    r=float(np.random.uniform(low=0,high=sampled_reward[-1]-sampled_reward[-2]))
-                                    sampled_reward.append(sampled_reward[-1]+r)
-                                sampled_reward.pop(0)
+                                # Step 1: uniform on simplex sum_{j=1}^n z_j <= 1
+                                z = np.random.dirichlet(np.ones(N + 1))[:-1]   # keep z_1,...,z_n
+
+                                # Step 2: y_j = z_j / j
+                                j = np.arange(1, N + 1)
+                                y = z / j
+
+                                # Step 3: decreasing slopes Delta_i = sum_{j=i}^n y_j
+                                slopes = np.cumsum(y[::-1])[::-1]
+
+                                # Step 4: function values
+                                sampled_reward=np.cumsum(slopes)
                             else:
                                 sampled_reward=np.random.rand(N,)
                                 sampled_reward=np.sort(sampled_reward)
                         else:
                             sampled_reward=np.random.rand(N,)
+                    elif "dirichlet-gap" in list(config.reward_generator['mean_prob_constraint']):
+                        g = np.random.dirichlet([config.reward_generator.alpha]*(N+1))     # gaps sum to 1       
+                        sampled_reward=np.cumsum(g[:-1])  # f in [0,1], monotone
+                    elif "dirichlet-concave" in list(config.reward_generator['mean_prob_constraint']):
+                        g = np.random.dirichlet([config.reward_generator.alpha]*N)
+                        slopes = np.sort(g)[::-1]
+                        H = np.random.rand()
+                        sampled_reward = H * np.cumsum(slopes)
+
                     sampled_reward=np.clip(sampled_reward,0,1)
                     Reward_generator.set_mean(mean=list(sampled_reward))
 
-                    if type(config.setting['agent_cost'])==str:
-                        if config.setting['agent_cost']=='random':
-                            if config.setting['agent_cost_dist'][0]=='Uniform':
-                                low=np.ones(N,)*config.setting['agent_cost_dist'][1]
-                                high=np.ones(N,)*config.setting['agent_cost_dist'][2]
-                                cost=np.random.uniform(low=low,high=high)
-                        Setting.cost=cost
+                if type(config.setting['agent_cost'])==str:
+                    if config.setting['agent_cost']=='random':
+                        if config.setting['agent_cost_dist'][0]=='Uniform':
+                            low=np.ones(N,)*config.setting['agent_cost_dist'][1]
+                            high=np.ones(N,)*config.setting['agent_cost_dist'][2]
+                            cost=np.random.uniform(low=low,high=high)
+                        elif config.setting['agent_cost_dist'][0]=='Dirichlet':
+                            alpha=[config.setting['agent_cost_dist'][1]]*N
+                            H = np.random.rand()
+                            cost = H*np.random.dirichlet(alpha)
+                        elif config.setting['agent_cost_dist'][0]=='linear':
+                            end_point= np.random.rand()*config.setting['agent_cost_dist'][1]
+                            cost = np.ones(N,)*end_point/N
+                    Setting.cost=cost
 
                 if config.setting['type'] is not None:
                     if  config.setting['type']=="beneficial-game":
@@ -84,22 +118,36 @@ def main(config):
                     elif config.setting['type']=="non-beneficial-game":
                         _, optimal_utility = Setting.optimal_solution()
                         if optimal_utility<=0: resampling=False
+                    elif config.setting['type']=="fixed-best-arm":
+                        _, _ , optimal_number,_ = Setting.optimal_solution()
+                        if optimal_number==config.setting.best_arm: resampling=False
+                    elif config.setting['type']=="uniform-best-arm":
+                        if reset:
+                            # best_arm=np.random.randint(0,N+1,size=M)
+                            # num_optimal=np.bincount(np.random.randint(0,N+1,size=M))
+                            num_optimal=np.ceil(np.ones((N+1))*M/(N+1))
+                            print("best-arm dist=",num_optimal)
+                            reset=False
+                        _, _ , optimal_number,_= Setting.optimal_solution()
+                        num_optimal[int(optimal_number)]+=-1
+                        if num_optimal[int(optimal_number)]>=0: resampling=False
                 else:
                     resampling=False
                     
             if config.reward_generator['type']=='random': print("Random Reward func=",sampled_reward)
-
             
             # if config.setting['type']=='pre-defined':
             
-
-            
-
-            
-            
-            optimal_incentive, optimal_utility = Setting.optimal_solution()
+            optimal_incentive, optimal_utility,optimal_number,true_net_reward = Setting.optimal_solution()
+            print("true_net_reward=",true_net_reward)
+            print("optimal_num_agent=",optimal_number," with incentive=",optimal_incentive)
             reward_array, agent_response_array, incentive_array,pred_best_reward_array = Setting.run_fixed_budget(max_round=T)
             
+            if config.reward_generator['type']=='random': print("Random Reward func=",sampled_reward)
+            print("true_net_reward=",true_net_reward)
+            print("optimal_num_agent=",optimal_number," with incentive=",optimal_incentive)
+
+            num_optimal_array[int(optimal_number)]+=1
 
             #--------Store data for each run--------
             wandb.log({"seed":seed,"optimal_utility": optimal_utility})
@@ -160,7 +208,7 @@ def main(config):
         mean_num_agent_response_l1_regret_array=np.mean(num_agent_response_l1_regret_array,axis=0)
         sum_num_agent_response_l1_regret_array=np.sum(num_agent_response_l1_regret_array,axis=0)
         sqsum_num_agent_response_l1_regret_array=np.sum(num_agent_response_l1_regret_array**2,axis=0)
-
+        print("num_optimal_arm_array=",num_optimal_array," for ",M," sims")
         if T>1000:
             log=10
         else:

@@ -1,7 +1,7 @@
 _target_ : policy.gEU.gEU
 type_arm : participation-based
 num_cost_learning : 20
-cost_alg : D-optimal #uniformly-space #D-optimal
+cost_alg : ex-BinSearch2 #uniformly-space #D-optimal
 est_reward: TS #TS #UCB-lattimore
 name : gEU
 num_optimiser : 16

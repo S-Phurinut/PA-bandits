@@ -11,6 +11,8 @@ warnings.filterwarnings('ignore')  # Suppress all warnings
 warnings.warn("This warning will be hidden")
 
 import os
+os.environ["WANDB__SERVICE"] = "wandb-core"
+os.environ["WANDB_START_METHOD"] = "thread"
 os.environ["PYTENSOR_FLAGS"] = (
     "compiledir=/tmp/pytensor_unique,"
     "verbosity=low"
@@ -25,7 +27,7 @@ def main(config):
     #Instantitate wandb and log info of configurations 
     log_config=pd.json_normalize(OmegaConf.to_object(config),sep='/')
     log_config=log_config.to_dict(orient='records')[0]
-    wandb.init(project ="PA_bandits",config=log_config, mode=config.wandb_mode, entity="s_phurinut",settings=wandb.Settings(start_method="thread"))
+    wandb.init(project ="PA_bandits",config=log_config, mode=config.wandb_mode, entity="s_phurinut", settings=wandb.Settings(init_timeout=120))
     
     M=config.num_sim
     T=config.max_round
@@ -77,7 +79,8 @@ def main(config):
             else:
                 reward_array, _, incentive_array, EU_array, para_loc_array,para_shape_array = Setting.run_fixed_budget(max_round=T)
             
-            optimal_incentive, optimal_utility = Setting.optimal_solution()
+            if sim==0:
+                optimal_incentive, optimal_utility = Setting.optimal_solution()
 
             #--------Store data for each run--------
             wandb.log({"seed":seed,"optimal_utility": optimal_utility})
