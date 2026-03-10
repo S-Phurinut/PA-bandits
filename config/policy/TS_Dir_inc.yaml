@@ -8,17 +8,18 @@ name : IPA-full
 
 is_reward_known : False
 is_cost_known : False #True
-dir_para : 1
+dir_para : Global-Jeffreys #1
 
 refit_step : adaptive-log10
 refit_max_round_1step : 0 #20 
+refit_max_round_step : 2000
 
 min_sample_required : 0
 stopping_criteria : null
 include_arm0 : True
 
-pymc_draws : 500
-pymc_tune : 500
+pymc_draws : 1000
+pymc_tune : 1000
 pymc_target_accept : 0.9
 pymc_cores : 1
 pymc_chains : 2

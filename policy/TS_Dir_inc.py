@@ -112,7 +112,7 @@ class TS_Dirichlet_increment():
                     refit_model=True
                     if self.bandit_alg['refit_step']=="adaptive-log10":
                         refit_step=max(int(10**(math.floor(np.log10(info['curr_round'])))),1)
-                        if info['curr_round']%refit_step==0  or info['curr_round']<=self.bandit_alg['refit_max_round_1step'] :
+                        if info['curr_round']%min(refit_step,self.bandit_alg['refit_max_round_step'])==0  or info['curr_round']<=self.bandit_alg['refit_max_round_1step'] :
                             refit_model=True
                         else:
                             refit_model=False
