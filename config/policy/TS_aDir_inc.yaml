@@ -1,14 +1,13 @@
-_target_ : policy.TS_Dir_inc.TS_Dirichlet_increment
+_target_ : policy.TS_aDir_inc.TS_alpha_Dirichlet_increment
 type_arm : participation-based
 num_cost_learning : log2T
 cost_alg : MultiBinSearch
 
-bandit_alg: TS-Dirichlet-increment
+bandit_alg: TS-aDirichlet-increment
 name : IPA-full
 
 is_reward_known : False
 is_cost_known : False #True
-dir_para : Global-Jeffreys #1
 
 refit_step : adaptive-log10
 refit_max_round_1step : 0 #20 
