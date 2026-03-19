@@ -113,10 +113,10 @@ def main(config):
 
                 if config.setting['type'] is not None:
                     if  config.setting['type']=="beneficial-game":
-                        _, optimal_utility = Setting.optimal_solution()
+                        _, optimal_utility,_,_ = Setting.optimal_solution()
                         if optimal_utility>0: resampling=False
                     elif config.setting['type']=="non-beneficial-game":
-                        _, optimal_utility = Setting.optimal_solution()
+                        _, optimal_utility,_,_ = Setting.optimal_solution()
                         if optimal_utility<=0: resampling=False
                     elif config.setting['type']=="fixed-best-arm":
                         _, _ , optimal_number,_ = Setting.optimal_solution()

@@ -129,6 +129,9 @@ class gEU(): #EU with agent approx model
             elif self.cost_alg=="D-optimal":
                 best_cost=np.clip(self.D_optimal(info['curr_round']),0,1)
                 print("D-optimal next point=",best_cost)
+            elif self.cost_alg=="approx-D-optimal":
+                best_cost=np.clip(self.approx_D_optimal(info['curr_round'],plugin=self.alg['cost_alg_config'][0],init_num_request=self.alg['cost_alg_config'][1]),0,1)
+                print("D-optimal next point=",best_cost)
             elif self.cost_alg=="A-optimal":
                 pass
             elif self.cost_alg=="ex-BinSearch2":
@@ -347,7 +350,6 @@ class gEU(): #EU with agent approx model
             return 1e300
 
         z = (x - u) / s
-        z = (x - u) / s
         p = 1.0 / (1.0 + np.exp(-z))
         w = p * (1.0 - p)
 
@@ -396,24 +398,40 @@ class gEU(): #EU with agent approx model
         # s_quad = float(g.T @ np.linalg.inv(M) @ g)
         # return -math.log(1.0 + w * s_quad)
     
-    # def D_optimal(self):
-    #     if self.reset:
-    #         self.count=0
+    def approx_D_optimal(self,curr_round,plugin="MLE",init_num_request=3):
+        if self.reset:
+            self.count=0
 
-    #     if self.count%2==0:
-    #         if self.alg['model'].name=="logit" :
-    #             if self.alg['model'].para_type=="loc-shape":
-    #                 self.x_mid=self.alg['model'].para_loc
-    #                 self.b=1/self.alg['model'].para_shape
-    #         elif self.alg['model'].name=="bayes-logit":
-    #             if self.alg['model'].para_type=="loc-shape":
-    #                 self.x_mid=self.alg['model'].u_mean
-    #                 self.b=1/self.alg['model'].s_mean
-    #         x=self.x_mid+(1.543/self.b)
-    #     else:
-    #         x=self.x_mid-(1.543/self.b)
-    #     self.count+=1
-    #     return x
+
+        if curr_round==1:
+            return np.ones((self.player.num_agent,))/self.player.num_agent
+        elif curr_round<=init_num_request:
+            x=np.ones((self.player.num_agent,))
+            for agent in range(self.player.num_agent):
+                if self.player.agent_response_array[(curr_round-1),agent]==0:
+                    x[agent]=self.player.incentive_array[(curr_round-1),agent]*2
+                else:
+                    x[agent]=self.player.incentive_array[(curr_round-1),agent]/2
+            return 
+        else:
+            if self.count%2==0:
+                if self.alg['model'].name=="logit" :
+                    if self.alg['model'].para_type=="loc-shape":
+                        self.x_mid=self.alg['model'].para_loc
+                        self.b=self.alg['model'].para_shape
+                elif self.alg['model'].name=="bayes-logit":
+                    if self.alg['model'].para_type=="loc-shape":
+                        if plugin=="MLE":
+                            self.x_mid,self.b=self.alg['model'].MLE_estimation()
+                        elif plugin=="MAP":
+                            self.x_mid,self.b=self.alg['model'].MAP_estimation()
+                            # self.x_mid=self.alg['model'].u_mean
+                            # self.b=self.alg['model'].s_mean
+                x=self.x_mid+(1.543*self.b)
+            else:
+                x=self.x_mid-(1.543*self.b)
+            self.count+=1
+        return x
 
 
 

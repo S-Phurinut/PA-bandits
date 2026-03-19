@@ -9,15 +9,15 @@ name : IPA-full
 is_reward_known : False
 is_cost_known : False #True
 
-refit_step : adaptive-log10
-refit_max_round_1step : 0 #20 
+refit_step : 100 #adaptive-log10
+refit_max_round_1step : 10 #20 
 refit_max_round_step : 2000
 
 min_sample_required : 0
 stopping_criteria : null
 include_arm0 : True
 
-pymc_draws : 2000
+pymc_draws : 500
 pymc_tune : 1000
 pymc_target_accept : 0.9
 pymc_cores : 1

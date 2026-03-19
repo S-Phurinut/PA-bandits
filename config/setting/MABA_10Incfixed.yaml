@@ -1,0 +1,6 @@
+_target_ : MABA_model.MABA_model
+num_agent : 10 #provide practically uniform dist over increasing func
+agent_cost : [0.0909, 0.0909,0.0909,0.0909,0.0909,0.0909,0.0909,0.0909,0.0909,0.0909]
+type : fixed-best-arm
+best_arm : 1
+init_seed_id : 0

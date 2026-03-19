@@ -28,7 +28,7 @@ class TS_alpha_Dirichlet_increment():
         
         self.bandit_alg=bandit_alg
         self.reset=True
-        self.dir_para=dir_para
+
 
         
 
@@ -50,13 +50,6 @@ class TS_alpha_Dirichlet_increment():
             self.alpha=np.ones((self.player.num_agent,))
             self.beta=np.ones((self.player.num_agent,))
             
-            if type(self.dir_para)==str:
-                if self.dir_para=="Global-Jeffreys":
-                    self.dir_para=np.ones((self.player.num_agent+1,))/(self.player.num_agent+1)
-            elif type(self.dir_para)==list:
-                self.dir_para=np.array(self.dir_para)
-            else:
-                self.dir_para=np.ones((self.player.num_agent+1,))*self.dir_para
             self.fit_first_model=True
             self.reset=False
         else:
@@ -133,7 +126,7 @@ class TS_alpha_Dirichlet_increment():
                             A = pm.Gamma("A", alpha=1.0, beta=1.0)
 
                             # symmetric Dirichlet with total mass A
-                            a_vec = pm.math.ones(n + 1) * A 
+                            a_vec = pm.math.ones(self.player.num_agent + 1) * A 
                             # Positive latent variables
                             g = pm.Gamma("g", alpha=a_vec, beta=1.0, shape=self.player.num_agent + 1)
 
