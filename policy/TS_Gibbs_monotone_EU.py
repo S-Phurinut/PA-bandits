@@ -88,8 +88,9 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
             
         else:
             self.reset=False
+            self.alg['model'].update_data(X=self.player.incentive_array[:(info['curr_round']-1),:],Y=self.player.agent_response_array[:(info['curr_round']-1),:])
             #----------Update agent model learning----------
-            if info['curr_round']>1 and self.is_model_known==False:
+            if info['curr_round']>1 and self.is_model_known==False and self.need_model_training==True:
                 train_model=False
                 if type(self.alg['model_training_appr'])==int:
                     if (info['curr_round']-1)%self.alg['model_training_appr']==0 or info['curr_round']<=self.alg['model_training_max_round_1step'] :
@@ -101,7 +102,7 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
                         train_model=True
 
                 if train_model:
-                     self.alg['model'].fit(X=self.player.incentive_array[:(info['curr_round']-1),:],Y=self.player.agent_response_array[:(info['curr_round']-1),:])
+                     self.alg['model'].fit()
 
                 if info['curr_round']==self.num_cost_learning:
                     # print("logit model_para=",self.alg['model'].para_loc,self.alg['model'].para_shape)
@@ -121,16 +122,18 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
 
 
         if info['curr_round']<=self.num_cost_learning:
-            if info['curr_round']==self.num_cost_learning:
-                self.is_cost_learning_done=True
-
             if self.cost_alg=="uniformly-space":
                 best_cost=np.ones((self.player.num_agent,))*self.cost_list[int(info['curr_round']-1)]
+                self.need_model_training=False
             elif self.cost_alg=="D-optimal":
-                best_cost=np.clip(self.D_optimal(),0,1)
-            elif self.cost_alg=="A-optimal":
-                pass
-        else:  
+                best_cost=np.clip(self.D_optimal(curr_round=info['curr_round']),0,1)
+                self.need_model_training=True
+
+            if info['curr_round']==self.num_cost_learning:
+                self.is_cost_learning_done=True
+                self.need_model_training=True
+        else:
+            self.need_model_training=True  
             self.is_cost_learning_done=True      
             #====================Contracting Part============================
             if self.type_arm=='participation-based':
@@ -144,34 +147,39 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
 
                     #------------init Gibbs sample by Monotone regression-----------------
                     if self.init_Gibb_sample:
-                        n=self.player.num_agent+1
+                        n=self.player.num_agent
                         f = cp.Variable(n)
                         # constraints
                         cons = []
-                        cons += [ f[0]==0 ]
+                        cons += [ f[0]>=0 ]
                         # isotonic: f[i+1] >= f[i]
                         cons += [f[i+1] - f[i] >= 0 for i in range(n-1)]
                         # maximum prob <=1
                         cons += [f[n-1] <= 1]
 
                         # objective: least squares
+                        weights = np.zeros((n,))
+                        # weights[0] = 1.0
 
-                        TS_sample = np.zeros((self.player.num_agent+1,))
+                        TS_sample = np.zeros((n,))
                         for n in range(self.player.num_agent):
                             # Draw a sample from the Beta(alpha_i, beta_i) distribution
-                            TS_sample[n+1] = np.random.beta(self.alpha[n], self.beta[n])
+                            TS_sample[n] = np.random.beta(self.alpha[n], self.beta[n])
+                            # posterior variance of Beta(a,b)
+                            var = (self.alpha[n] * self.beta[n]) / (((self.alpha[n] + self.beta[n]) ** 2) * (self.alpha[n] + self.beta[n] + 1))
 
-                        is_sample_exist= np.ones((self.player.num_agent))
-                        for n in range(self.player.num_agent):
-                            if self.num_reward[n]==0:
-                                is_sample_exist[n]=0
-                        obj = cp.Minimize(cp.sum_squares(cp.multiply(np.concatenate(([1],is_sample_exist)),(TS_sample - f))))
-                    
-                    
+                            # inverse-variance weight
+                            weights[n] = 1.0 / max(var, 1e-12)
+
+                        # normalize weights for numerical stability
+                        weights = weights / np.max(weights)
+                        obj = cp.Minimize(cp.sum(cp.multiply(weights, cp.square(TS_sample - f))))
+
                         prob = cp.Problem(obj, cons)
                         prob.solve(solver=cp.OSQP)
 
-                        self.gibb_sample=np.array(f.value)[1:]
+
+                        self.gibb_sample=np.array(f.value)
                         self.init_Gibb_sample=False
 
 

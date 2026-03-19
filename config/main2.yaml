@@ -5,6 +5,6 @@ defaults:
   - policy : gEU2 #TS_EU2
   - model : logit
   - reward_generator : MASA_ber10_6
-num_sim : 10
+num_sim : 1
 max_round : 1000
 wandb_mode : online

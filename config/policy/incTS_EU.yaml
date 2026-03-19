@@ -2,14 +2,17 @@ _target_ : policy.TS_EU.TS_EU
 type_arm : participation-based
 num_cost_learning : 0
 cost_alg : null #D-optimal #uniformly-space #null
-est_reward: incTS #UCB-lattimore
+est_reward: TS-Gibbs-monotone #UCB-lattimore
 name : TS-EU
 num_optimiser : 16
 is_reward_known : False
 model_training_appr : T
 is_model_known : False #True
 prior : null #['beta',['fixed',3],['fixed',1]] #['beta',['linear',1,2],['fixed',1]]s
-max_resampling_inc : 1E4
+
+
+
+# max_resampling_inc : 1E4
 
 # refit_step: 1
 # likelihood_model : cdf-exp

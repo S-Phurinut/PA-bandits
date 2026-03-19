@@ -9,6 +9,8 @@ import pymc as pm
 import pytensor.tensor as pt
 
 import scipy as sc
+from scipy.stats import beta as beta_dist
+import cvxpy as cp
 import math
 from poibin import PoiBin
 
@@ -61,7 +63,7 @@ class TS_EU(): #EU with agent approx model
             if self.cost_alg=="uniformly-space":
                 self.cost_list=list(np.linspace(1E-12,1-(1E-12),int(self.num_cost_learning)))
             
-            if self.alg['est_reward']=='TS' or self.alg['est_reward']=='incTS' or self.alg['est_reward']=='posterior-mean'  and self.type_arm=='participation-based':
+            if self.alg['est_reward']=='TS' or self.alg['est_reward']=='TS-Gibbs-monotone' or self.alg['est_reward']=='posterior-mean'  and self.type_arm=='participation-based':
                 if self.alg['prior'] is not None:
                     if self.alg['prior'][0]=='beta':
                         if self.alg['prior'][1][0]=='fixed':
@@ -109,7 +111,7 @@ class TS_EU(): #EU with agent approx model
                 self.sum_reward[n]+=info['previous_reward']
                 self.num_reward[n]+=1
 
-                if self.alg['est_reward']=='TS' or self.alg['est_reward']=='posterior-mean' or self.alg['est_reward']=='incTS':
+                if self.alg['est_reward']=='TS' or self.alg['est_reward']=='posterior-mean' or self.alg['est_reward']=='TS-Gibbs-monotone':
                     if info['previous_reward']>0:
                         self.alpha[n]+=1
                     else:
@@ -154,40 +156,27 @@ class TS_EU(): #EU with agent approx model
                         est_reward=self.UCB1_value(info['curr_round'],info['max_round'])
                     elif self.alg['est_reward']=='TS':
                         est_reward=self.TS_value()
-                    elif self.alg['est_reward']=='incTS':
-                        est_reward=self.incTS_value(max_resampling_inc=self.alg['max_resampling_inc'])
+                    elif self.alg['est_reward']=='TS-Gibbs-monotone':
+                        est_reward=self.TS_mGibb()
                     elif self.alg['est_reward']=='posterior-mean':
                         est_reward=self.alpha/(self.alpha+self.beta)
-                    elif self.alg['est_reward']=='increasing-TS':
-                        refit_model=True
-                        if self.alg['refit_step']=="adaptive-log10":
-                            refit_step=max(int(10**(math.floor(np.log10(info['curr_round']))-1)),1)
-                            if info['curr_round']%refit_step==0  or info['curr_round']<=self.alg['refit_max_round_1step'] :
-                                refit_model=True
-                            else:
-                                refit_model=False
-                        if type(self.alg['refit_step'])==int:
-                            if (info['curr_round']-1)%int(self.alg['refit_step'])==0:
-                                refit_model=True
-                            else:
-                                refit_model=False
+
+                    # elif self.alg['est_reward']=='increasing-TS':
+                    #     refit_model=True
+                    #     if self.alg['refit_step']=="adaptive-log10":
+                    #         refit_step=max(int(10**(math.floor(np.log10(info['curr_round']))-1)),1)
+                    #         if info['curr_round']%refit_step==0  or info['curr_round']<=self.alg['refit_max_round_1step'] :
+                    #             refit_model=True
+                    #         else:
+                    #             refit_model=False
+                    #     if type(self.alg['refit_step'])==int:
+                    #         if (info['curr_round']-1)%int(self.alg['refit_step'])==0:
+                    #             refit_model=True
+                    #         else:
+                    #             refit_model=False
                                 
-                        est_reward=self.structured_TS_value(type='increasing',refit_model=refit_model)
-                    elif self.alg['est_reward']=='concave-TS':
-                        refit_model=True
-                        if self.alg['refit_step']=="adaptive-log10":
-                            refit_step=max(int(10**(math.floor(np.log10(info['curr_round']))-1)),1)
-                            if info['curr_round']%refit_step==0  or info['curr_round']<=self.alg['refit_max_round_1step'] :
-                                refit_model=True
-                            else:
-                                refit_model=False
-                        if type(self.alg['refit_step'])==int:
-                            if (info['curr_round']-1)%int(self.alg['refit_step'])==0:
-                                refit_model=True
-                            else:
-                                refit_model=False
-                                
-                        est_reward=self.structured_TS_value(type='increasing-concave',refit_model=refit_model)
+                    #     est_reward=self.structured_TS_value(type='increasing',refit_model=refit_model)
+
 
 
                 eps = 0 #float(1E-1)
@@ -274,49 +263,118 @@ class TS_EU(): #EU with agent approx model
             sampled_thetas.append(sample)
         return np.array(sampled_thetas)
     
-    def incTS_value(self,max_resampling_inc=1E7):
-        if max_resampling_inc is None: max_resampling_inc=1E7
-        resampling=True
-        count_inc=-1
-        while resampling:
-            count_inc+=1
-            sampled_thetas = []
+    def TS_mGibb(self,):
+        if self.alg['init_sweep_appr']=="T":
+            self.init_Gibb_sample=True
+
+        #------------init Gibbs sample by Monotone regression-----------------
+        if self.init_Gibb_sample:
+            n=self.player.num_agent
+            f = cp.Variable(n)
+            # constraints
+            cons = []
+            cons += [ f[0]>=0 ]
+            # isotonic: f[i+1] >= f[i]
+            cons += [f[i+1] - f[i] >= 0 for i in range(n-1)]
+            # maximum prob <=1
+            cons += [f[n-1] <= 1]
+
+            # objective: least squares
+            weights = np.zeros((n,))
+            # weights[0] = 1.0
+
+            TS_sample = np.zeros((n,))
             for n in range(self.player.num_agent):
                 # Draw a sample from the Beta(alpha_i, beta_i) distribution
-                sample = np.random.beta(self.alpha[n], self.beta[n])
-                if n>0 and sample<sampled_thetas[-1] and count_inc<=max_resampling_inc: #if reward is not incresing, restart
-                    resampling=True
-                    break
+                TS_sample[n] = np.random.beta(self.alpha[n], self.beta[n])
+                # posterior variance of Beta(a,b)
+                var = (self.alpha[n] * self.beta[n]) / (((self.alpha[n] + self.beta[n]) ** 2) * (self.alpha[n] + self.beta[n] + 1))
+
+                # inverse-variance weight
+                weights[n] = 1.0 / max(var, 1e-12)
+
+            # normalize weights for numerical stability
+            weights = weights / np.max(weights)
+            obj = cp.Minimize(cp.sum(cp.multiply(weights, cp.square(TS_sample - f))))
+
+            prob = cp.Problem(obj, cons)
+            prob.solve(solver=cp.OSQP)
+
+            self.gibb_sample=np.array(f.value)
+            self.init_Gibb_sample=False
+
+            for _ in range(self.alg['num_sweeps']):
+                if self.random_scan:
+                    order = np.random.permutation(self.player.num_agent)
                 else:
-                    resampling=False
-                sampled_thetas.append(sample)
+                    order = range(self.player.num_agent)
+                
+                for i in order:
+                    L = 0.0 if i == 0 else self.gibb_sample[i - 1]
+                    U = 1.0 if i == self.player.num_agent - 1 else self.gibb_sample[i + 1]
 
-        return np.array(sampled_thetas)
+                    # Clamp interval into [0,1] and ensure nonempty numerically
+                    L = float(np.clip(L, 0.0, 1.0))
+                    U = float(np.clip(U, 0.0, 1.0))
+                    if U < L:
+                        # This should not happen if mu is monotone, but guard anyway.
+                        L, U = U, L
+
+                    # If interval is essentially a point, just set to midpoint
+                    if U - L <=self.alg['eps']:
+                        self.gibb_sample[i] = 0.5 * (L + U)
+                        continue
+
+                    a_i, b_i = float(self.alpha[i]), float(self.beta[i])
+
+                    # Truncated Beta via inverse CDF sampling:
+                    # u ~ Uniform(F(L), F(U)), mu_i = F^{-1}(u)
+                    FL = beta_dist.cdf(L, a_i, b_i)
+                    FU = beta_dist.cdf(U, a_i, b_i)
+
+                    # Numerical safety: keep within [0,1] and avoid FL==FU issues
+                    FL = float(np.clip(FL, 0.0, 1.0))
+                    FU = float(np.clip(FU, 0.0, 1.0))
+
+                    if FU - FL <=self.alg['eps']:
+                        self.gibb_sample[i] = 0.5 * (L + U)
+                        continue
+
+                    u = np.random.uniform(FL +self.alg['eps'], FU -self.alg['eps']) if (FU - FL) > 2 *self.alg['eps'] else np.random.uniform(FL, FU)
+                    self.gibb_sample[i] = float(beta_dist.ppf(u, a_i, b_i))
+
+                    # Final clamp (rarely needed) and enforce local monotonicity
+                    if self.gibb_sample[i] < L:
+                        self.gibb_sample[i] = L
+                    elif self.gibb_sample[i] > U:
+                        self.gibb_sample[i] = U
+
+        return self.gibb_sample
     
-    def structured_TS_value(self,type='increasing',refit_model=True):
-        M = np.zeros((self.player.num_agent+1, self.player.num_agent+1), dtype=np.float64)  # exclude first arm
-        for k in range(0, self.player.num_agent+1):
-            for j in range(self.player.num_agent+1):
-                if type=="increasing":
-                    if k>=j:
-                        M[k, j] = 1
-                elif type=="increasing-concave":
-                    M[k, j] = min(k+1,j+1)
+    # def structured_TS_value(self,type='increasing',refit_model=True):
+    #     M = np.zeros((self.player.num_agent+1, self.player.num_agent+1), dtype=np.float64)  # exclude first arm
+    #     for k in range(0, self.player.num_agent+1):
+    #         for j in range(self.player.num_agent+1):
+    #             if type=="increasing":
+    #                 if k>=j:
+    #                     M[k, j] = 1
+    #             elif type=="increasing-concave":
+    #                 M[k, j] = min(k+1,j+1)
 
-        if refit_model:
-            with pm.Model() as m:
-                if self.alg['likelihood_model']== "cdf-exp":
-                    w = pm.Uniform("w",lower=0, upper= 10, shape=self.player.num_agent+1)
-                    # Latent concave function
-                    f_all = pt.dot(pt.as_tensor_variable(M, dtype="float64"), w)
-                    # Hazard-style link for flexible probabilities
-                    p_all = pm.Deterministic("p_all", 1 - pm.math.exp(-f_all))
-                    y = pm.Bernoulli("y", p=p_all[self.input], observed=self.output)
+    #     if refit_model:
+    #         with pm.Model() as m:
+    #             if self.alg['likelihood_model']== "cdf-exp":
+    #                 w = pm.Uniform("w",lower=0, upper= 10, shape=self.player.num_agent+1)
+    #                 # Latent concave function
+    #                 f_all = pt.dot(pt.as_tensor_variable(M, dtype="float64"), w)
+    #                 # Hazard-style link for flexible probabilities
+    #                 p_all = pm.Deterministic("p_all", 1 - pm.math.exp(-f_all))
+    #                 y = pm.Bernoulli("y", p=p_all[self.input], observed=self.output)
 
-                    self.trace = pm.sample(draws=self.alg['pymc_draws'], tune=self.alg['pymc_tune'], target_accept=self.alg['pymc_target_accept'],
-                                                    initvals={"w": np.full(self.player.num_agent+1, 0.01)}, cores=self.alg['pymc_cores'],chains=self.alg['pymc_chains'])
-        self.p_samples = self.trace.posterior["p_all"].stack(draws=("chain","draw")).values
-        p_all=self.p_samples[:,np.random.randint(0,self.p_samples.shape[1])][1:]
+    #                 self.trace = pm.sample(draws=self.alg['pymc_draws'], tune=self.alg['pymc_tune'], target_accept=self.alg['pymc_target_accept'],
+    #                                                 initvals={"w": np.full(self.player.num_agent+1, 0.01)}, cores=self.alg['pymc_cores'],chains=self.alg['pymc_chains'])
+    #     self.p_samples = self.trace.posterior["p_all"].stack(draws=("chain","draw")).values
+    #     p_all=self.p_samples[:,np.random.randint(0,self.p_samples.shape[1])][1:]
 
         return np.array(p_all)
     
