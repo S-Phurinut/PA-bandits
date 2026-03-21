@@ -17,7 +17,7 @@ class Logit():
             self.para_loc=np.ones((self.num_agent,))*0.5
             self.para_shape=np.ones((self.num_agent,))*0.001
             self.reset=False
-        arm=9
+
         for agent in range(self.num_agent):
             best_loss=math.inf
 

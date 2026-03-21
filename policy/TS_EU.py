@@ -154,28 +154,14 @@ class TS_EU(): #EU with agent approx model
                         est_reward=self.UCBlat_value(info['max_round'])
                     elif self.alg['est_reward']=='UCB1':
                         est_reward=self.UCB1_value(info['curr_round'],info['max_round'])
+                    elif self.alg['est_reward']=='BayesUCB':
+                        est_reward=self.BayesUCB_value(info['curr_round'],info['max_round'])
                     elif self.alg['est_reward']=='TS':
                         est_reward=self.TS_value()
-                    elif self.alg['est_reward']=='TS-Gibbs-monotone':
-                        est_reward=self.TS_mGibb()
                     elif self.alg['est_reward']=='posterior-mean':
                         est_reward=self.alpha/(self.alpha+self.beta)
 
-                    # elif self.alg['est_reward']=='increasing-TS':
-                    #     refit_model=True
-                    #     if self.alg['refit_step']=="adaptive-log10":
-                    #         refit_step=max(int(10**(math.floor(np.log10(info['curr_round']))-1)),1)
-                    #         if info['curr_round']%refit_step==0  or info['curr_round']<=self.alg['refit_max_round_1step'] :
-                    #             refit_model=True
-                    #         else:
-                    #             refit_model=False
-                    #     if type(self.alg['refit_step'])==int:
-                    #         if (info['curr_round']-1)%int(self.alg['refit_step'])==0:
-                    #             refit_model=True
-                    #         else:
-                    #             refit_model=False
-                                
-                    #     est_reward=self.structured_TS_value(type='increasing',refit_model=refit_model)
+
 
 
 
@@ -263,94 +249,23 @@ class TS_EU(): #EU with agent approx model
             sampled_thetas.append(sample)
         return np.array(sampled_thetas)
     
-    def TS_mGibb(self,):
-        if self.alg['init_sweep_appr']=="T":
-            self.init_Gibb_sample=True
+    def BayesUCB_value(self, round, max_round):
+        BayesUCB = np.zeros((self.player.num_agent,))
 
-        #------------init Gibbs sample by Monotone regression-----------------
-        if self.init_Gibb_sample:
-            n=self.player.num_agent
-            f = cp.Variable(n)
-            # constraints
-            cons = []
-            cons += [ f[0]>=0 ]
-            # isotonic: f[i+1] >= f[i]
-            cons += [f[i+1] - f[i] >= 0 for i in range(n-1)]
-            # maximum prob <=1
-            cons += [f[n-1] <= 1]
+        # Quantile level
+        # Common practical choice:
+        if self.alg['conf_bound']=='1/t' or self.alg['conf_bound'] is None:
+            q = 1.0 - 1.0 / max(2, round)
+        # q = 1.0 - 1.0 / (round * (np.log(max(2, round)) ** 3))
+        # q = min(q, 1 - 1e-12)  # avoid numerical issues
 
-            # objective: least squares
-            weights = np.zeros((n,))
-            # weights[0] = 1.0
+        for n in range(self.player.num_agent):
+            # Posterior for arm n is Beta(alpha[n], beta[n])
+            BayesUCB[n] = sc.stats.beta.ppf(q, self.alpha[n], self.beta[n])
 
-            TS_sample = np.zeros((n,))
-            for n in range(self.player.num_agent):
-                # Draw a sample from the Beta(alpha_i, beta_i) distribution
-                TS_sample[n] = np.random.beta(self.alpha[n], self.beta[n])
-                # posterior variance of Beta(a,b)
-                var = (self.alpha[n] * self.beta[n]) / (((self.alpha[n] + self.beta[n]) ** 2) * (self.alpha[n] + self.beta[n] + 1))
-
-                # inverse-variance weight
-                weights[n] = 1.0 / max(var, 1e-12)
-
-            # normalize weights for numerical stability
-            weights = weights / np.max(weights)
-            obj = cp.Minimize(cp.sum(cp.multiply(weights, cp.square(TS_sample - f))))
-
-            prob = cp.Problem(obj, cons)
-            prob.solve(solver=cp.OSQP)
-
-            self.gibb_sample=np.array(f.value)
-            self.init_Gibb_sample=False
-
-            for _ in range(self.alg['num_sweeps']):
-                if self.random_scan:
-                    order = np.random.permutation(self.player.num_agent)
-                else:
-                    order = range(self.player.num_agent)
-                
-                for i in order:
-                    L = 0.0 if i == 0 else self.gibb_sample[i - 1]
-                    U = 1.0 if i == self.player.num_agent - 1 else self.gibb_sample[i + 1]
-
-                    # Clamp interval into [0,1] and ensure nonempty numerically
-                    L = float(np.clip(L, 0.0, 1.0))
-                    U = float(np.clip(U, 0.0, 1.0))
-                    if U < L:
-                        # This should not happen if mu is monotone, but guard anyway.
-                        L, U = U, L
-
-                    # If interval is essentially a point, just set to midpoint
-                    if U - L <=self.alg['eps']:
-                        self.gibb_sample[i] = 0.5 * (L + U)
-                        continue
-
-                    a_i, b_i = float(self.alpha[i]), float(self.beta[i])
-
-                    # Truncated Beta via inverse CDF sampling:
-                    # u ~ Uniform(F(L), F(U)), mu_i = F^{-1}(u)
-                    FL = beta_dist.cdf(L, a_i, b_i)
-                    FU = beta_dist.cdf(U, a_i, b_i)
-
-                    # Numerical safety: keep within [0,1] and avoid FL==FU issues
-                    FL = float(np.clip(FL, 0.0, 1.0))
-                    FU = float(np.clip(FU, 0.0, 1.0))
-
-                    if FU - FL <=self.alg['eps']:
-                        self.gibb_sample[i] = 0.5 * (L + U)
-                        continue
-
-                    u = np.random.uniform(FL +self.alg['eps'], FU -self.alg['eps']) if (FU - FL) > 2 *self.alg['eps'] else np.random.uniform(FL, FU)
-                    self.gibb_sample[i] = float(beta_dist.ppf(u, a_i, b_i))
-
-                    # Final clamp (rarely needed) and enforce local monotonicity
-                    if self.gibb_sample[i] < L:
-                        self.gibb_sample[i] = L
-                    elif self.gibb_sample[i] > U:
-                        self.gibb_sample[i] = U
-
-        return self.gibb_sample
+        return BayesUCB
     
+
     # def structured_TS_value(self,type='increasing',refit_model=True):
     #     M = np.zeros((self.player.num_agent+1, self.player.num_agent+1), dtype=np.float64)  # exclude first arm
     #     for k in range(0, self.player.num_agent+1):

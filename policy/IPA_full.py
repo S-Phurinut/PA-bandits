@@ -51,7 +51,7 @@ class IPA_full():
             elif self.num_cost_learning=='T':
                 self.num_cost_learning=int(info['max_round'])
 
-            if self.bandit_alg['bandit_alg']=='TS' or self.bandit_alg['bandit_alg']=='UTS'  or self.bandit_alg['bandit_alg']=='incUTS' or self.bandit_alg['bandit_alg']=='concaveUTS'  or self.bandit_alg['bandit_alg']=='incTS' or self.bandit_alg['bandit_alg']=='concaveTS' and self.type_arm=='participation-based':
+            if self.bandit_alg['bandit_alg']=='TS' or self.bandit_alg['bandit_alg']=='UTS'  or self.bandit_alg['bandit_alg']=='BayesUCB' or self.bandit_alg['bandit_alg']=='concaveUTS'  or self.bandit_alg['bandit_alg']=='incTS' or self.bandit_alg['bandit_alg']=='concaveTS' and self.type_arm=='participation-based':
                 if 'prior' in self.bandit_alg:
                     if self.bandit_alg['prior'] is not None:
                         if self.bandit_alg['prior'][0]=='beta':
@@ -63,7 +63,7 @@ class IPA_full():
                 
                 self.est_reward=self.alpha/(self.alpha+self.beta)
 
-            if self.bandit_alg['bandit_alg']=='UTS'  or self.bandit_alg['bandit_alg']=='incUTS' or self.bandit_alg['bandit_alg']=='concaveUTS'  or self.bandit_alg['bandit_alg']=='OSUB':
+            if self.bandit_alg['bandit_alg']=='UTS'  or self.bandit_alg['bandit_alg']=='concaveUTS'  or self.bandit_alg['bandit_alg']=='OSUB':
                 self.num_leader_count=np.zeros((self.player.num_agent,))
                 if self.bandit_alg['include_arm0']: self.num_leader_arm0=0
 
@@ -83,7 +83,7 @@ class IPA_full():
                 self.num_reward[n]+=1
                 self.est_reward[n]= self.sum_reward[n]/self.num_reward[n]
 
-                if self.bandit_alg['bandit_alg']=='TS' or self.bandit_alg['bandit_alg']=='UTS'  or self.bandit_alg['bandit_alg']=='incUTS' or self.bandit_alg['bandit_alg']=='concaveUTS'  or self.bandit_alg['bandit_alg']=='incTS' or self.bandit_alg['bandit_alg']=='concaveTS' :
+                if self.bandit_alg['bandit_alg']=='TS' or self.bandit_alg['bandit_alg']=='UTS'  or self.bandit_alg['bandit_alg']=='BayesUCB' or self.bandit_alg['bandit_alg']=='concaveUTS'  or self.bandit_alg['bandit_alg']=='incTS' or self.bandit_alg['bandit_alg']=='concaveTS' :
                     if info['previous_reward']>0:
                         self.alpha[n]+=1
                     else:
@@ -151,8 +151,8 @@ class IPA_full():
                         pulled_arm=self.concaveTS_subroutine(curr_round=info['curr_round'],max_resampling_inc=self.bandit_alg['max_resampling_inc'],max_resampling_concave=self.bandit_alg['max_resampling_concave'])
                     elif self.bandit_alg['bandit_alg']=='UTS':
                         pulled_arm=self.UnimodalTS_subroutine()
-                    elif self.bandit_alg['bandit_alg']=='incUTS':
-                        pulled_arm=self.incUnimodalTS_subroutine(max_resampling_inc=self.bandit_alg['max_resampling_inc'])
+                    elif self.bandit_alg['bandit_alg']=='BayesUCB':
+                        pulled_arm=self.BayesUCB_subroutine(info['curr_round'])
                     elif self.bandit_alg['bandit_alg']=='concaveUTS':
                         pulled_arm=self.concaveUnimodalTS_subroutine(max_resampling_inc=self.bandit_alg['max_resampling_inc'],max_resampling_concave=self.bandit_alg['max_resampling_concave'])
                     elif self.bandit_alg['bandit_alg']=='OSUB':
@@ -241,6 +241,37 @@ class IPA_full():
                 best_arm=int(np.argmax(UCB))
         else:
             best_arm=int(np.argmax(UCB))
+        return best_arm
+    
+    def BayesUCB_subroutine(self,round):
+        UCB = np.zeros((self.player.num_agent,))
+
+        # Quantile level
+        if self.bandit_alg['conf_bound']=='1/t':
+            q = 1.0 - 1.0 / max(2, round)
+        
+
+        # Tolerance for randomization among nearly-equal arms
+        if self.bandit_alg['tie_breaking_eps'] is None:
+            epsilon = 1e-3
+        else:
+            epsilon = self.bandit_alg['tie_breaking_eps']
+
+        for n in range(self.player.num_agent):
+            # Posterior for arm n is Beta(alpha[n], beta[n])
+            UCB[n] = sc.stats.beta.ppf(q, self.alpha[n], self.beta[n])-self.cum_cost[n]
+
+        if self.bandit_alg['include_arm0']:
+            if np.max(UCB) < 0:
+                best_arm = -1
+            else:
+                max_ucb = np.max(UCB)
+                candidate_arms = np.where(np.abs(UCB - max_ucb) <= epsilon)[0]
+                best_arm = int(np.random.choice(candidate_arms))
+        else:
+            max_ucb = np.max(UCB)
+            candidate_arms = np.where(np.abs(UCB - max_ucb) <= epsilon)[0]
+            best_arm = int(np.random.choice(candidate_arms))
         return best_arm
     
     def incUCB1_subroutine(self,round):
