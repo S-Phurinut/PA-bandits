@@ -1,0 +1,2 @@
+_target_ : model.stable_logit.Logit
+name : stable-logit

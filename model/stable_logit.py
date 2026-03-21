@@ -13,7 +13,7 @@ class Logit:
         max_restarts=4
     ):
         self.num_agent = num_agent
-        self.para_loc = np.ones(num_agent) * 0.5
+        self.para_loc = np.ones(num_agent) /num_agent
         self.para_shape = np.ones(num_agent) * 0.001
         self.reset = True
         self.name = "logit"
@@ -29,7 +29,7 @@ class Logit:
 
     def fit(self, X, Y):
         if self.reset:
-            self.para_loc = np.ones(self.num_agent) * 0.5
+            self.para_loc = np.ones(self.num_agent) /self.num_agent
             self.para_shape = np.ones(self.num_agent) * 0.001
             self.reset = False
 
