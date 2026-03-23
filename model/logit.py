@@ -6,16 +6,17 @@ from scipy.special import expit
 class Logit():
     def __init__(self,num_agent,**model):
         self.num_agent=num_agent
-        self.para_loc=np.ones((self.num_agent,))*0.5
-        self.para_shape=np.ones((self.num_agent,))*0.001
+        self.para_loc=np.ones((self.num_agent,))/num_agent
+        self.para_shape=np.ones((self.num_agent,))*0.01
         self.reset=True
         self.name="logit"
         self.para_type="loc-shape"
+        self.model=model
         
     def fit(self,X,Y):
         if self.reset:
-            self.para_loc=np.ones((self.num_agent,))*0.5
-            self.para_shape=np.ones((self.num_agent,))*0.001
+            self.para_loc=np.ones((self.num_agent,))/self.num_agent
+            self.para_shape=np.ones((self.num_agent,))*0.01
             self.reset=False
 
         for agent in range(self.num_agent):
@@ -57,7 +58,13 @@ class Logit():
         eps = 1e-12
         y_pred = np.clip(y_pred, eps, 1 - eps)
         loss = np.sum(y * np.log(y_pred) + (1 - y) * np.log(1 - y_pred))
-        return -loss 
+        
+        if self.model['est_appr']=='MLE':
+            penalty=0
+        elif self.model['est_appr']=='MAP':
+            if self.model['shape_prior'][0]=="gamma":
+                penalty = self.model['shape_prior'][2] * para[1]- (self.model['shape_prior'][1] - 1.0) * np.log(para[1])
+        return -loss + penalty
 
     def prob_accept(self,incentive): #prob of accept distribution 
         p=np.zeros((self.num_agent,))

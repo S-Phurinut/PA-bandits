@@ -10,7 +10,8 @@ class Logit:
         num_agent,
         lambda_grid=None,
         fallback_shape_tol=1e-5,
-        max_restarts=4
+        max_restarts=4,
+        **model
     ):
         self.num_agent = num_agent
         self.para_loc = np.ones(num_agent) /num_agent

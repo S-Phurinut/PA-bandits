@@ -7,4 +7,4 @@ defaults:
   - reward_generator : MASA_ber10_6
 num_sim : 1
 max_round : 1000
-wandb_mode : online
+wandb_mode : offline

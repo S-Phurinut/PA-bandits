@@ -125,8 +125,8 @@ class TS_EU(): #EU with agent approx model
             if self.cost_alg=="uniformly-space":
                 best_cost=np.ones((self.player.num_agent,))*self.cost_list[int(info['curr_round']-1)]
                 self.need_model_training=False
-            elif self.cost_alg=="D-optimal":
-                best_cost=np.clip(self.D_optimal(curr_round=info['curr_round']),0,1)
+            elif self.cost_alg=="approx-D-optimal":
+                best_cost=np.clip(self.approx_D_optimal(curr_round=info['curr_round']),0,1)
                 self.need_model_training=True
             elif self.cost_alg=="A-optimal":
                 pass
@@ -293,23 +293,30 @@ class TS_EU(): #EU with agent approx model
 
         return np.array(p_all)
     
-    def D_optimal(self,curr_round):
+    def approx_D_optimal(self,curr_round):
         if self.reset:
             self.count=0
 
-        if self.count%2==0:
-            if self.alg['model'].name=="logit" :
-                if self.alg['model'].para_type=="loc-shape":
-                    self.x_mid=self.alg['model'].para_loc
-                    self.b=1/self.alg['model'].para_shape
-            elif self.alg['model'].name=="bayes-logit":
-                if self.alg['model'].para_type=="loc-shape":
-                    self.x_mid=self.alg['model'].u_mean
-                    self.b=1/self.alg['model'].s_mean
-            x=self.x_mid+(1.543/self.b)
+        if curr_round==0:
+            return np.ones((self.player.num_agent,))
         else:
-            x=self.x_mid-(1.543/self.b)
-        self.count+=1
+            if self.count%2==0:
+                if self.alg['model'].name=="logit" :
+                    if self.alg['model'].para_type=="loc-shape":
+                        self.x_mid=self.alg['model'].para_loc
+                        self.b=1/self.alg['model'].para_shape
+                elif self.alg['model'].name=="bayes-logit":
+                    if self.alg['model'].para_type=="loc-shape":
+                        self.x_mid=self.alg['model'].u_mean
+                        self.b=1/self.alg['model'].s_mean
+
+                        for i in range(self.player.num_agent):
+                            self.x_mid[i],self.b[i]=self.alg['model'].get_MAP_estimator(agent_id=i)
+
+                x=self.x_mid+(1.543/self.b)
+            else:
+                x=self.x_mid-(1.543/self.b)
+            self.count+=1
         return x
     
     # def D_optimal(self,curr_round):

@@ -25,8 +25,8 @@ class BayesLogit:
         self.reset = True
         self.name = "bayes-logit"
         self.para_type = "loc-shape"
-        self.u_mean=np.ones((self.num_agent,))*0.5
-        self.s_mean=np.ones((self.num_agent,))*0.1
+        self.u_mean=np.ones((self.num_agent,))/self.num_agent
+        self.s_mean=np.ones((self.num_agent,))*0.01
         
         self.u_sample=self.u_mean
         self.s_sample=self.s_mean
@@ -47,8 +47,8 @@ class BayesLogit:
         self.X=X
         self.Y=Y
         if self.reset:
-            self.u_mean=np.ones((self.num_agent,))*0.5
-            self.s_mean=np.ones((self.num_agent,))*0.1
+            self.u_mean=np.ones((self.num_agent,))/self.num_agent
+            self.s_mean=np.ones((self.num_agent,))*0.01
 
             # if self.model['fitting_appr']=='one_agent':
             self.previous_data_id=0
@@ -72,14 +72,17 @@ class BayesLogit:
             self.u_LS=np.array(self.u_mean)
             self.s_LS=np.array(self.s_mean)
             for agent_id in range(self.num_agent):
-                self.u_LS[agent_id],self.s_LS[agent_id]=self.get_MLE_estimator(agent_id)
+                self.u_LS[agent_id],self.s_LS[agent_id]=self.get_MAP_estimator(agent_id)
             self.s_LS=np.clip(self.s_LS,1e-3,2)
-            print("MLE est=\n",self.u_LS,"\n",self.s_LS)
+            print("MAP est=\n",self.u_LS,"\n",self.s_LS)
             
 
             with pm.Model() as model:
                 u = pm.Uniform("u", 0, 1, shape=self.num_agent)          # (N,) location parameter
-                s = pm.Exponential("s", lam=self.model['shape_prior'][1], shape=self.num_agent)     # (N,) shape parameter
+                if self.model['shape_prior'][0]=='exponential':
+                    s = pm.Exponential("s", lam=self.model['shape_prior'][1], shape=self.num_agent)     # (N,) shape parameter
+                elif self.model['shape_prior'][0]=='gamma':
+                    s = pm.Gamma("s",alpha=self.model['shape_prior'][1],beta=self.model['shape_prior'][2],shape=self.num_agent)
 
                 z = (self.X - u) / s          # (T, N)
     
@@ -107,9 +110,9 @@ class BayesLogit:
             self.u_LS=np.array(self.u_mean)
             self.s_LS=np.array(self.s_mean)
             for agent_id in range(self.num_agent):
-                self.u_LS[agent_id],self.s_LS[agent_id]=self.get_MLE_estimator(agent_id)
+                self.u_LS[agent_id],self.s_LS[agent_id]=self.get_MAP_estimator(agent_id)
             self.s_LS=np.clip(self.s_LS,1e-3,2)
-            print("MLE est=\n",self.u_LS,"\n",self.s_LS)
+            print("MAP est=\n",self.u_LS,"\n",self.s_LS)
             
             count_init=0
             count_end=0
@@ -126,7 +129,10 @@ class BayesLogit:
                 count_end+=num_para
                 with pm.Model() as model:
                     u = pm.Uniform("u", 0, 1, shape=num_para)          # (N,) location parameter
-                    s = pm.Exponential("s", lam=self.model['shape_prior'][1], shape=num_para)     # (N,) shape parameter
+                    if self.model['shape_prior'][0]=='exponential':
+                        s = pm.Exponential("s", lam=self.model['shape_prior'][1], shape=num_para)     # (N,) shape parameter
+                    elif self.model['shape_prior'][0]=='gamma':
+                        s = pm.Gamma("s",alpha=self.model['shape_prior'][1],beta=self.model['shape_prior'][2],shape=num_para)    # (N,) shape parameter
 
                     z = (self.X[:,count_init:count_end] - u) / s          # (T, N)
         
@@ -174,7 +180,7 @@ class BayesLogit:
             print("posterior_mean=",self.u_mean,self.s_mean)
             print("num_sample",self.u_sample.shape)
 
-    def get_MLE_estimator(self,agent_id):
+    def get_MAP_estimator(self,agent_id):
         if self.previous_data_id==0:
             return self.u_mean[agent_id],self.s_mean[agent_id]
         else:
@@ -210,13 +216,16 @@ class BayesLogit:
         else:
 
             #Least Square for Warm-start
-            # u_LS, s_LS= self.get_MLE_estimator(agent_id)
+            # u_LS, s_LS= self.get_MAP_estimator(agent_id)
             # print("warm-start",[agent_id,u_LS,s_LS])
             # # print(X)
 
             with pm.Model() as model:
                 u = pm.Uniform("u", 0, 1)          # location parameter
-                s = pm.Exponential("s", lam=self.model['shape_prior'][1])     # shape parameter
+                if self.model['shape_prior'][0]=='exponential':
+                    s = pm.Exponential("s", lam=self.model['shape_prior'][1])     # (N,) shape parameter
+                elif self.model['shape_prior'][0]=='gamma':
+                    s = pm.Gamma("s",alpha=self.model['shape_prior'][1],beta=self.model['shape_prior'][2])    # shape parameter
 
                 z = (np.array(X) - u) / s          # (T, N)
 
@@ -266,4 +275,9 @@ class BayesLogit:
         eps = 1e-12
         y_pred = np.clip(y_pred, eps, 1 - eps)
         loss = np.sum(y * np.log(y_pred) + (1 - y) * np.log(1 - y_pred))
-        return -loss 
+        
+
+        if self.model['shape_prior'][0]=="gamma":
+            penalty = self.model['shape_prior'][2] * para[1]- (self.model['shape_prior'][1] - 1.0) * np.log(para[1])
+        
+        return -loss + penalty
