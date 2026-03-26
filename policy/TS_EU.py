@@ -133,7 +133,7 @@ class TS_EU(): #EU with agent approx model
                 self.need_model_training=False
             elif self.cost_alg=="approx-D-optimal":
                 best_cost=np.clip(self.approx_D_optimal(curr_round=info['curr_round']),0,1)
-                self.need_model_training=True
+                self.need_model_training=False
             elif self.cost_alg=="A-optimal":
                 pass
             elif self.cost_alg=="ex-BinSearch":

@@ -14,9 +14,9 @@ import scipy as sc
 import math
 from poibin import PoiBin
 
-class TS_Gibbs_Monotone_EU(): #EU with agent approx model
+class TS_mGibb_BayesUCB_EU(): #EU with agent approx model
     def __init__(self,type_arm,
-                 num_sweeps=10,random_scan=True,eps=1e-12,init_sweep_appr='once',**alg):
+                 num_burnin_sweeps=5,num_sweeps=100,random_scan=True,eps=1e-12,init_sweep_appr='once',**alg):
         self.type_arm=type_arm
         self.alg=alg
         self.num_cost_learning=self.alg['num_cost_learning']
@@ -41,6 +41,7 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
         self.is_model_training_done=False
         self.reset=True
         self.need_model_training=True
+        self.num_burnin_sweeps=num_burnin_sweeps
         self.num_sweeps=num_sweeps #Number of full Gibbs sweeps
         self.random_scan=random_scan #If True, update indices in a random permutation each sweep
         self.eps=eps #Numerical safety margin for CDF inversion and interval clamping.
@@ -58,6 +59,8 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
             self.previous_c=np.ones((self.player.num_agent,))*0.5
             self.sum_reward=np.zeros((self.player.num_agent,))
             self.num_reward=np.zeros((self.player.num_agent,))
+            self.posterior=np.zeros((self.num_sweeps,self.player.num_agent))
+            self.first_init_Gibbs=True
             self.init_Gibb_sample=True
 
             if self.num_cost_learning=='log2T': 
@@ -132,9 +135,6 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
             if self.cost_alg=="uniformly-space":
                 best_cost=np.ones((self.player.num_agent,))*self.cost_list[int(info['curr_round']-1)]
                 self.need_model_training=False
-            elif self.cost_alg=="D-optimal":
-                best_cost=np.clip(self.D_optimal(curr_round=info['curr_round']),0,1)
-                self.need_model_training=True
             elif self.cost_alg=="approx-D-optimal":
                 best_cost=np.clip(self.approx_D_optimal(info['curr_round']),0,1)
                 print("D-optimal next point=",best_cost)
@@ -155,6 +155,12 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
                 else:
                     if self.init_sweep_appr=="T":
                         self.init_Gibb_sample=True
+                    elif self.init_sweep_appr==1:
+                        if self.first_init_Gibbs:
+                            self.init_Gibb_sample=True
+                        else:
+                            self.init_Gibb_sample=False
+                            self.gibb_sample=self.posterior[-1,:]
 
                     #------------init Gibbs sample by Monotone regression-----------------
                     if self.init_Gibb_sample:
@@ -191,10 +197,11 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
 
 
                         self.gibb_sample=np.array(f.value)
+                        self.first_init_Gibbs=False
                         self.init_Gibb_sample=False
 
 
-                    for _ in range(self.num_sweeps):
+                    for k in range(int(self.num_burnin_sweeps+self.num_sweeps)):
                         if self.random_scan:
                             order = np.random.permutation(self.player.num_agent)
                         else:
@@ -239,7 +246,15 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
                                 self.gibb_sample[i] = L
                             elif self.gibb_sample[i] > U:
                                 self.gibb_sample[i] = U
-                    est_reward=np.array(self.gibb_sample)        
+
+                        if k>= self.num_burnin_sweeps:
+                            self.posterior[int(k-self.num_burnin_sweeps),:]=self.gibb_sample    
+
+                    if self.alg['conf_bound']=='1/T':
+                        q = 1.0 - 1.0 / max(2, info['curr_round'])
+                    est_reward=np.quantile(self.posterior,q=q, axis=0)   #UCB
+
+                    if info['curr_round']%500==0:   print("BayesUCB=",est_reward)
 
 
 
@@ -301,24 +316,6 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
             EU+=-np.dot(p,cost)
         return -EU 
     
-    def D_optimal(self):
-        if self.reset:
-            self.count=0
-
-        if self.count%2==0:
-            if self.alg['model'].name=="logit" :
-                if self.alg['model'].para_type=="loc-shape":
-                    self.x_mid=self.alg['model'].para_loc
-                    self.b=1/self.alg['model'].para_shape
-            elif self.alg['model'].name=="bayes-logit":
-                if self.alg['model'].para_type=="loc-shape":
-                    self.x_mid=self.alg['model'].u_mean
-                    self.b=1/self.alg['model'].s_mean
-            x=self.x_mid+(1.543/self.b)
-        else:
-            x=self.x_mid-(1.543/self.b)
-        self.count+=1
-        return x
 
     def approx_D_optimal(self,curr_round):
         if self.reset:
@@ -347,11 +344,6 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
         return x
 
 
-    
-    def A_optimal(self):
-        return 1
-    
-            
 
 
                 
