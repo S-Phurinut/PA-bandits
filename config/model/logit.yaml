@@ -1,4 +1,4 @@
 _target_ : model.logit.Logit
 name : logit
 est_appr : MAP #MLE
-shape_prior : ["gamma",2,10]
+shape_prior : ["gamma",1.5,15]

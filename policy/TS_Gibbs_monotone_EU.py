@@ -40,7 +40,7 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
         self.is_cost_learning_done=False
         self.is_model_training_done=False
         self.reset=True
-
+        self.need_model_training=True
         self.num_sweeps=num_sweeps #Number of full Gibbs sweeps
         self.random_scan=random_scan #If True, update indices in a random permutation each sweep
         self.eps=eps #Numerical safety margin for CDF inversion and interval clamping.
@@ -54,6 +54,7 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
         if info['curr_round']==1 and self.reset:
             self.is_cost_learning_done=False
             self.is_model_training_done=False
+            self.need_model_training=True
             self.previous_c=np.ones((self.player.num_agent,))*0.5
             self.sum_reward=np.zeros((self.player.num_agent,))
             self.num_reward=np.zeros((self.player.num_agent,))
@@ -100,6 +101,12 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
                         train_model=True
                     elif self.alg['model_training_appr']=='T':
                         train_model=True
+                    elif self.alg['model_training_appr']=="adaptive-log10":
+                        refit_step=max(int(10**(math.floor(np.log10(info['curr_round'])))),1)
+                        if info['curr_round']%min(refit_step,self.alg['model_training_max_round_step'])==0  or info['curr_round']<=self.alg['model_training_max_round_1step'] :
+                            train_model=True
+                        else:
+                            train_model=False
 
                 if train_model:
                      self.alg['model'].fit()
@@ -131,6 +138,7 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
             elif self.cost_alg=="approx-D-optimal":
                 best_cost=np.clip(self.approx_D_optimal(info['curr_round']),0,1)
                 print("D-optimal next point=",best_cost)
+                self.need_model_training=True
 
             if info['curr_round']==self.num_cost_learning:
                 self.is_cost_learning_done=True
@@ -249,11 +257,11 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
                 # print(-self.EU_value(np.array([0,0]),est_reward))
                 for i in range(0,self.num_optimiser):
                     if i==0:
-                        x0=self.previous_c
+                        x0=np.clip(self.previous_c,1e-6,1-(1e-6)) 
                     else:
                         x0=np.clip(np.random.rand(self.player.num_agent,),0.1,0.9)
 
-                    opt=sc.optimize.minimize(self.EU_value,x0=x0,bounds=bnds,args=(est_reward),tol=1E-12) #,method="SLSQP"
+                    opt=sc.optimize.minimize(self.EU_value,x0=x0,bounds=bnds,args=(est_reward)) #,method="SLSQP"
                     cost=opt.x
                     EU=-opt.fun
                     if cost is not None and EU>best_EU:
@@ -317,24 +325,24 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
             self.count=0
 
         if curr_round==0:
-            return np.ones((self.player.num_agent,))
+            return np.ones((self.player.num_agent,))/self.player.num_agent
         else:
             if self.count%2==0:
                 if self.alg['model'].name=="logit" :
                     if self.alg['model'].para_type=="loc-shape":
                         self.x_mid=self.alg['model'].para_loc
-                        self.b=1/self.alg['model'].para_shape
+                        self.b=self.alg['model'].para_shape
                 elif self.alg['model'].name=="bayes-logit":
                     if self.alg['model'].para_type=="loc-shape":
                         self.x_mid=self.alg['model'].u_mean
-                        self.b=1/self.alg['model'].s_mean
+                        self.b=self.alg['model'].s_mean
 
                         for i in range(self.player.num_agent):
                             self.x_mid[i],self.b[i]=self.alg['model'].get_MAP_estimator(agent_id=i)
 
-                x=self.x_mid+(1.543/self.b)
+                x=self.x_mid+(1.543*self.b)
             else:
-                x=self.x_mid-(1.543/self.b)
+                x=self.x_mid-(1.543*self.b)
             self.count+=1
         return x
 

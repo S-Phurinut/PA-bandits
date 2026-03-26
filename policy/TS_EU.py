@@ -96,6 +96,12 @@ class TS_EU(): #EU with agent approx model
                         train_model=True
                     elif self.alg['model_training_appr']=='T':
                         train_model=True
+                    elif self.alg['model_training_appr']=="adaptive-log10":
+                        refit_step=max(int(10**(math.floor(np.log10(info['curr_round'])))),1)
+                        if info['curr_round']%min(refit_step,self.alg['model_training_max_round_step'])==0  or info['curr_round']<=self.alg['model_training_max_round_1step'] :
+                            train_model=True
+                        else:
+                            train_model=False
 
                 if train_model:
                      self.alg['model'].fit()
@@ -304,18 +310,18 @@ class TS_EU(): #EU with agent approx model
                 if self.alg['model'].name=="logit" :
                     if self.alg['model'].para_type=="loc-shape":
                         self.x_mid=self.alg['model'].para_loc
-                        self.b=1/self.alg['model'].para_shape
+                        self.b=self.alg['model'].para_shape
                 elif self.alg['model'].name=="bayes-logit":
                     if self.alg['model'].para_type=="loc-shape":
                         self.x_mid=self.alg['model'].u_mean
-                        self.b=1/self.alg['model'].s_mean
+                        self.b=self.alg['model'].s_mean
 
                         for i in range(self.player.num_agent):
                             self.x_mid[i],self.b[i]=self.alg['model'].get_MAP_estimator(agent_id=i)
 
-                x=self.x_mid+(1.543/self.b)
+                x=self.x_mid+(1.543*self.b)
             else:
-                x=self.x_mid-(1.543/self.b)
+                x=self.x_mid-(1.543*self.b)
             self.count+=1
         return x
     

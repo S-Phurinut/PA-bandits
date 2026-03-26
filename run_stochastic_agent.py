@@ -67,6 +67,65 @@ def main(config):
             print("sim=",sim,' game_seed=',seed)
 
             Reward_generator=hydra.utils.instantiate(config.reward_generator,num_agent=N)
+
+            if config.reward_generator['type']=='random':
+                if "uniform" in list(config.reward_generator['mean_prob_constraint']):
+                    if "increasing" in list(config.reward_generator['mean_prob_constraint']):
+                        if "concave" in list(config.reward_generator['mean_prob_constraint']):
+                            # Step 1: uniform on simplex sum_{j=1}^n z_j <= 1
+                            z = np.random.dirichlet(np.ones(N + 1))[:-1]   # keep z_1,...,z_n
+
+                            # Step 2: y_j = z_j / j
+                            j = np.arange(1, N + 1)
+                            y = z / j
+
+                            # Step 3: decreasing slopes Delta_i = sum_{j=i}^n y_j
+                            slopes = np.cumsum(y[::-1])[::-1]
+
+                            # Step 4: function values
+                            sampled_reward=np.cumsum(slopes)
+                        else:
+                            sampled_reward=np.random.rand(N,)
+                            sampled_reward=np.sort(sampled_reward)
+                    else:
+                        sampled_reward=np.random.rand(N,)
+                elif "dirichlet-gap" in list(config.reward_generator['mean_prob_constraint']):
+                    g = np.random.dirichlet([config.reward_generator.alpha]*(N+1))     # gaps sum to 1       
+                    sampled_reward=np.cumsum(g[:-1])  # f in [0,1], monotone
+                elif "dirichlet-concave" in list(config.reward_generator['mean_prob_constraint']):
+                    g = np.random.dirichlet([config.reward_generator.alpha]*N)
+                    slopes = np.sort(g)[::-1]
+                    H = np.random.rand()
+                    sampled_reward = H * np.cumsum(slopes)
+
+                sampled_reward=np.clip(sampled_reward,0,1)
+                Reward_generator.set_mean(mean=list(sampled_reward))
+
+            if type(config.agent['para_loc'])==str:
+                if config.setting['para_loc']=='random':
+                    if config.setting['para_loc_dist'][0]=='Uniform':
+                        low=np.ones(N,)*config.setting['para_loc_dist'][1]
+                        high=np.ones(N,)*config.setting['para_loc_dist'][2]
+                        para_loc=np.random.uniform(low=low,high=high)
+                    elif config.setting['para_loc_dist'][0]=='Dirichlet':
+                        alpha=[config.setting['para_loc_dist'][1]]*N
+                        H = np.random.rand()
+                        para_loc = H*np.random.dirichlet(alpha)
+                    elif config.setting['para_loc_dist'][0]=='linear':
+                        end_point= np.random.rand()*config.setting['para_loc_dist'][1]
+                        para_loc = np.ones(N,)*end_point/N
+                    
+                    config.setting['para_loc']=list(para_loc)
+            
+            if type(config.agent['para_shape'])==str:
+                if config.setting['para_shape']=='random':
+                    if config.setting['para_shape'][0]=='shape':
+                        low=np.ones(N,)*config.setting['para_shape_dist'][1]
+                        high=np.ones(N,)*config.setting['para_shape_dist'][2]
+                        para_shape=np.random.uniform(low=low,high=high)
+
+                    config.setting['para_shape']=list(para_shape)
+            
             Agent=hydra.utils.instantiate(config.agent)
             Agent_model=hydra.utils.instantiate(config.model,num_agent=N)
             Policy=hydra.utils.instantiate(config.policy,model=Agent_model)
@@ -74,6 +133,7 @@ def main(config):
                                         principal_policy=Policy,
                                         agent_policy=Agent,
                                         Reward_generator=Reward_generator)
+            
             if Agent_model.name=="bayes-logit":
                 reward_array, _, incentive_array, EU_array, para_loc_array,para_shape_array,var_loc_array,var_shape_array = Setting.run_fixed_budget(max_round=T)
             else:

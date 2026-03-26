@@ -8,7 +8,10 @@ class Logit():
         self.para_shape=parameter['para_shape']
         self.num_agent=parameter['num_agent']
 
-        if self.para_shape is not list:
+        if self.para_loc is not list and self.para_loc is not str:
+            self.para_loc=np.ones((self.num_agent,))*self.para_loc
+
+        if self.para_shape is not list and self.para_shape is not str:
             self.para_shape=np.ones((self.num_agent,))*self.para_shape
         
     def prob_accept(self,incentive): #prob of accept distribution 

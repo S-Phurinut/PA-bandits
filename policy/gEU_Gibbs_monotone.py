@@ -38,6 +38,7 @@ class gEU_Gibbs_Monotone(): #EU with agent approx model
 
         self.num_optimiser=alg['num_optimiser']
         self.is_cost_learning_done=False
+        self.need_model_training=True
         self.is_model_training_done=False
         self.reset=True
 
@@ -54,6 +55,7 @@ class gEU_Gibbs_Monotone(): #EU with agent approx model
         if info['curr_round']==1 and self.reset:
             self.is_cost_learning_done=False
             self.is_model_training_done=False
+            self.need_model_training=True
             self.previous_c=np.ones((self.player.num_agent,))*0.5
             self.sum_reward=np.zeros((self.player.num_agent,))
             self.num_reward=np.zeros((self.player.num_agent,))
@@ -132,6 +134,7 @@ class gEU_Gibbs_Monotone(): #EU with agent approx model
                 pass
             elif self.cost_alg=="approx-D-optimal":
                 best_cost=np.clip(self.approx_D_optimal(info['curr_round']),0,1)
+                self.need_model_training=True
                 print("D-optimal next point=",best_cost)
         else:  
             self.is_cost_learning_done=True      
@@ -147,34 +150,38 @@ class gEU_Gibbs_Monotone(): #EU with agent approx model
 
                     #------------init Gibbs sample by Monotone regression-----------------
                     if self.init_Gibb_sample:
-                        n=self.player.num_agent+1
+                        n=self.player.num_agent
                         f = cp.Variable(n)
                         # constraints
                         cons = []
-                        cons += [ f[0]==0 ]
+                        cons += [ f[0]>=0 ]
                         # isotonic: f[i+1] >= f[i]
                         cons += [f[i+1] - f[i] >= 0 for i in range(n-1)]
                         # maximum prob <=1
                         cons += [f[n-1] <= 1]
 
                         # objective: least squares
+                        weights = np.zeros((n,))
+                        # weights[0] = 1.0
 
-                        TS_sample = np.zeros((self.player.num_agent+1,))
+                        TS_sample = np.zeros((n,))
                         for n in range(self.player.num_agent):
                             # Draw a sample from the Beta(alpha_i, beta_i) distribution
-                            TS_sample[n+1] = np.random.beta(self.alpha[n], self.beta[n])
+                            TS_sample[n] = np.random.beta(self.alpha[n], self.beta[n])
+                            # posterior variance of Beta(a,b)
+                            var = (self.alpha[n] * self.beta[n]) / (((self.alpha[n] + self.beta[n]) ** 2) * (self.alpha[n] + self.beta[n] + 1))
 
-                        is_sample_exist= np.ones((self.player.num_agent))
-                        for n in range(self.player.num_agent):
-                            if self.num_reward[n]==0:
-                                is_sample_exist[n]=0
-                        obj = cp.Minimize(cp.sum_squares(cp.multiply(np.concatenate(([1],is_sample_exist)),(TS_sample - f))))
-                    
-                    
+                            # inverse-variance weight
+                            weights[n] = 1.0 / max(var, 1e-12)
+
+                        # normalize weights for numerical stability
+                        weights = weights / np.max(weights)
+                        obj = cp.Minimize(cp.sum(cp.multiply(weights, cp.square(TS_sample - f))))
+
                         prob = cp.Problem(obj, cons)
                         prob.solve(solver=cp.OSQP)
 
-                        self.gibb_sample=np.array(f.value)[1:]
+                        self.gibb_sample=np.array(f.value)
                         self.init_Gibb_sample=False
 
 
@@ -315,17 +322,17 @@ class gEU_Gibbs_Monotone(): #EU with agent approx model
                 if self.alg['model'].name=="logit" :
                     if self.alg['model'].para_type=="loc-shape":
                         self.x_mid=self.alg['model'].para_loc
-                        self.b=1/self.alg['model'].para_shape
+                        self.b=self.alg['model'].para_shape
                 elif self.alg['model'].name=="bayes-logit":
                     if self.alg['model'].para_type=="loc-shape":
                         self.x_mid=self.alg['model'].u_mean
-                        self.b=1/self.alg['model'].s_mean
+                        self.b=self.alg['model'].s_mean
 
                         for i in range(self.player.num_agent):
                             self.x_mid[i],self.b[i]=self.alg['model'].get_MAP_estimator(agent_id=i)
 
-                x=self.x_mid+(1.543/self.b)
+                x=self.x_mid+(1.543*self.b)
             else:
-                x=self.x_mid-(1.543/self.b)
+                x=self.x_mid-(1.543*self.b)
             self.count+=1
         return x

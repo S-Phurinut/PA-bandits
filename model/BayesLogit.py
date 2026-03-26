@@ -194,7 +194,11 @@ class BayesLogit:
                 else:
                     x0=np.random.random(2,)/10
 
-                bnds = [(0,1),(-math.inf,math.inf)]
+                # bnds = [(0,1),(-math.inf,math.inf)]
+
+                eps=1e-12
+                x0=np.clip(x0,eps,1-eps)
+                bnds = [(eps,1-eps),(eps,1.0)]
                 opt=scipy.optimize.minimize(self.CE_loss,x0=x0,bounds=bnds,args=(np.array(self.X_ind[agent_id]),np.array(self.Y_ind[agent_id])),tol=1E-12)
                 loss=opt.fun
 
