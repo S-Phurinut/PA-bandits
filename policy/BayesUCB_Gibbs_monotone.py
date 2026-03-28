@@ -28,8 +28,10 @@ class BayesUCB_Gibbs_Monotone():
         
         self.bandit_alg=bandit_alg
         self.init_Gibb_sample=True
+        self.first_posterior=True
         self.reset=True
         self.weighted_LS=bandit_alg['init_sweep_weighted_LS']
+        self.refit_step=self.bandit_alg.get("refit_step",1)
 
     def update_data(self,player):
         self.player=player
@@ -49,6 +51,7 @@ class BayesUCB_Gibbs_Monotone():
             self.alpha=np.ones((self.player.num_agent,))
             self.beta=np.ones((self.player.num_agent,))
             self.first_init_Gibbs=True
+            self.first_posterior=True
             self.init_Gibb_sample=True
             self.posterior=np.zeros((self.num_sweeps,self.player.num_agent))
             self.reset=False
@@ -156,55 +159,56 @@ class BayesUCB_Gibbs_Monotone():
                         self.first_init_Gibbs=False
                         self.init_Gibb_sample=False
 
+                    if self.first_posterior or info['curr_round']%int(self.refit_step)==0:
+                        for k in range(int(self.num_burnin_sweeps+self.num_sweeps)):
+                            if self.random_scan:
+                                order = np.random.permutation(self.player.num_agent)
+                            else:
+                                order = range(self.player.num_agent)
+                            
+                            for i in order:
+                                L = 0.0 if i == 0 else self.gibb_sample[i - 1]
+                                U = 1.0 if i == self.player.num_agent - 1 else self.gibb_sample[i + 1]
 
-                    for k in range(int(self.num_burnin_sweeps+self.num_sweeps)):
-                        if self.random_scan:
-                            order = np.random.permutation(self.player.num_agent)
-                        else:
-                            order = range(self.player.num_agent)
-                        
-                        for i in order:
-                            L = 0.0 if i == 0 else self.gibb_sample[i - 1]
-                            U = 1.0 if i == self.player.num_agent - 1 else self.gibb_sample[i + 1]
+                                # Clamp interval into [0,1] and ensure nonempty numerically
+                                L = float(np.clip(L, 0.0, 1.0))
+                                U = float(np.clip(U, 0.0, 1.0))
+                                if U < L:
+                                    # This should not happen if mu is monotone, but guard anyway.
+                                    L, U = U, L
 
-                            # Clamp interval into [0,1] and ensure nonempty numerically
-                            L = float(np.clip(L, 0.0, 1.0))
-                            U = float(np.clip(U, 0.0, 1.0))
-                            if U < L:
-                                # This should not happen if mu is monotone, but guard anyway.
-                                L, U = U, L
+                                # If interval is essentially a point, just set to midpoint
+                                if U - L <=self.eps:
+                                    self.gibb_sample[i] = 0.5 * (L + U)
+                                    continue
 
-                            # If interval is essentially a point, just set to midpoint
-                            if U - L <=self.eps:
-                                self.gibb_sample[i] = 0.5 * (L + U)
-                                continue
+                                a_i, b_i = float(self.alpha[i]), float(self.beta[i])
 
-                            a_i, b_i = float(self.alpha[i]), float(self.beta[i])
+                                # Truncated Beta via inverse CDF sampling:
+                                # u ~ Uniform(F(L), F(U)), mu_i = F^{-1}(u)
+                                FL = beta_dist.cdf(L, a_i, b_i)
+                                FU = beta_dist.cdf(U, a_i, b_i)
 
-                            # Truncated Beta via inverse CDF sampling:
-                            # u ~ Uniform(F(L), F(U)), mu_i = F^{-1}(u)
-                            FL = beta_dist.cdf(L, a_i, b_i)
-                            FU = beta_dist.cdf(U, a_i, b_i)
+                                # Numerical safety: keep within [0,1] and avoid FL==FU issues
+                                FL = float(np.clip(FL, 0.0, 1.0))
+                                FU = float(np.clip(FU, 0.0, 1.0))
 
-                            # Numerical safety: keep within [0,1] and avoid FL==FU issues
-                            FL = float(np.clip(FL, 0.0, 1.0))
-                            FU = float(np.clip(FU, 0.0, 1.0))
+                                if FU - FL <=self.eps:
+                                    self.gibb_sample[i] = 0.5 * (L + U)
+                                    continue
 
-                            if FU - FL <=self.eps:
-                                self.gibb_sample[i] = 0.5 * (L + U)
-                                continue
+                                u = np.random.uniform(FL +self.eps, FU -self.eps) if (FU - FL) > 2 *self.eps else np.random.uniform(FL, FU)
+                                self.gibb_sample[i] = float(beta_dist.ppf(u, a_i, b_i))
 
-                            u = np.random.uniform(FL +self.eps, FU -self.eps) if (FU - FL) > 2 *self.eps else np.random.uniform(FL, FU)
-                            self.gibb_sample[i] = float(beta_dist.ppf(u, a_i, b_i))
+                                # Final clamp (rarely needed) and enforce local monotonicity
+                                if self.gibb_sample[i] < L:
+                                    self.gibb_sample[i] = L
+                                elif self.gibb_sample[i] > U:
+                                    self.gibb_sample[i] = U
 
-                            # Final clamp (rarely needed) and enforce local monotonicity
-                            if self.gibb_sample[i] < L:
-                                self.gibb_sample[i] = L
-                            elif self.gibb_sample[i] > U:
-                                self.gibb_sample[i] = U
-
-                        if k>= self.num_burnin_sweeps:
-                            self.posterior[int(k-self.num_burnin_sweeps),:]=self.gibb_sample    
+                            if k>= self.num_burnin_sweeps:
+                                self.posterior[int(k-self.num_burnin_sweeps),:]=self.gibb_sample 
+                        self.first_posterior=False   
 
                     if self.bandit_alg['conf_bound']=='1/T':
                         q = 1.0 - 1.0 / max(2, info['curr_round'])
