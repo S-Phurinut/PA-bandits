@@ -271,6 +271,10 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
                 self.previous_c=np.array(best_cost)
             if info['curr_round']%1000==0: print("num reward=",self.num_reward)
             
+            print("round=",info['curr_round'])
+            print("est reward=",np.round(est_reward,4))
+            print("cost=",np.round(best_cost,4))
+            
             if info['curr_round']==info['max_round']:
                 print("final incentive=",np.round(best_cost,4))
                 print("num reward=",self.num_reward)

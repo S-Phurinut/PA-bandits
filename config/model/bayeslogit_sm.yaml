@@ -7,7 +7,7 @@ shape_prior : ["gamma",1.5,15]
 
 #For pymc packages
 pymc_draws : 500
-pymc_tune : 1000
+pymc_tune : 500
 pymc_target_accept : 0.9
 pymc_cores : 1
 pymc_chains : 1

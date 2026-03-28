@@ -133,21 +133,21 @@ class BayesUCB_EU(): #EU with agent approx model
 
 
         if info['curr_round']<=self.num_cost_learning:
-            if info['curr_round']==self.num_cost_learning:
-                self.is_cost_learning_done=True
-
             if self.cost_alg=="uniformly-space":
                 best_cost=np.ones((self.player.num_agent,))*self.cost_list[int(info['curr_round']-1)]
-            elif self.cost_alg=="D-optimal":
-                best_cost=np.clip(self.D_optimal(),0,1)
-            elif self.cost_alg=="A-optimal":
-                pass
             elif self.cost_alg=="approx-D-optimal":
                 best_cost=np.clip(self.approx_D_optimal(info['curr_round']),0,1)
-                self.need_model_training=True
+                self.need_model_training=False
                 print("D-optimal next point=",best_cost)
-        else:  
+
+            if info['curr_round']==self.num_cost_learning:
+                self.is_cost_learning_done=True
+                self.need_model_training=True  
+
+        else: 
+            self.need_model_training=True   
             self.is_cost_learning_done=True      
+
             #====================Contracting Part============================
             if self.type_arm=='participation-based':
 
@@ -253,7 +253,7 @@ class BayesUCB_EU(): #EU with agent approx model
                 
                 for i in range(0,self.num_optimiser):
                     if i==0:
-                        x0=self.previous_c
+                        x0=np.clip(self.previous_c,1e-6,1-(1e-6))
                     else:
                         x0=np.clip(np.random.rand(self.player.num_agent,),0.1,0.9)
 
@@ -261,7 +261,9 @@ class BayesUCB_EU(): #EU with agent approx model
                         opt=sc.optimize.minimize(self.EU_value,x0=x0,bounds=bnds,args=(est_reward),tol=1E-12) #,method="SLSQP"
                     elif self.obj_style=='UCB-UCB':
                         opt=sc.optimize.minimize(self.opt_EU_value,x0=x0,bounds=bnds,args=(est_reward),tol=1E-12) #,method="SLSQP"
-                    
+                    elif self.obj_style=='LCB-LCB':
+                        opt=sc.optimize.minimize(self.pes_EU_value,x0=x0,bounds=bnds,args=(est_reward),tol=1E-12)
+
                     cost=opt.x
                     EU=-opt.fun
                     if cost is not None and EU>best_EU:
@@ -269,11 +271,15 @@ class BayesUCB_EU(): #EU with agent approx model
                         best_cost=np.array(cost)
 
                 self.previous_c=np.array(best_cost)
-                print("cost=",best_cost)
-                print("prob ucb=",self.alg['model'].prob_accept_ucb(cost,self.q,self.sub_sample_size))
-                print("prob mean=",self.alg['model'].prob_accept(cost,loc=self.alg['model'].u_mean,shape=self.alg['model'].s_mean))
+                print("round=",self.curr_round)
+                print("est reward=",np.round(est_reward,4))
+                print("cost=",np.round(best_cost,4))
+                print("prob ucb=",np.round(self.alg['model'].prob_accept_ucb(cost,self.q,self.sub_sample_size),4))
+                print("prob mean=",np.round(self.alg['model'].prob_accept(cost,loc=self.alg['model'].u_mean,shape=self.alg['model'].s_mean),4))
+                print("prob lcb=",np.round(self.alg['model'].prob_accept_ucb(cost,1-self.q,self.sub_sample_size),4))
+                print("num reward=",self.num_reward)
 
-            if info['curr_round']%1000==0: print("num reward=",self.num_reward)
+            # if info['curr_round']%1000==0: 
             
             if info['curr_round']==info['max_round']:
                 print("final incentive=",np.round(best_cost,4))
@@ -289,6 +295,31 @@ class BayesUCB_EU(): #EU with agent approx model
         else: 
             # Parametric UCB probability instead of plain MLE probability
             p= np.array(self.alg['model'].prob_accept_ucb(cost,self.q,self.sub_sample_size))
+
+        EU = 0.0
+
+        if np.sum(p <= 1E-4) >= self.player.num_agent:
+            EU += 0.0
+        elif np.sum(p >= 1 - 1E-12) >= self.player.num_agent:
+            EU += reward[self.player.num_agent - 1] - np.dot(p, cost)
+        else:
+            pb = PoiBin(p)
+            num_offered_agent = int(np.sum(p > 1E-6))
+            num_guaranteed_agent = int(np.sum(p >= 1 - 1E-6))
+            for arm in range(max(num_guaranteed_agent, 1), num_offered_agent + 1):
+                EU += reward[arm - 1] * np.clip(pb.pmf(arm), 0, 1)
+            EU += -np.dot(p, cost)
+
+        return -EU
+    
+    def pes_EU_value(self, cost, reward):
+        cost = np.asarray(cost, dtype=float)
+
+        if self.is_model_known:
+            p = np.array(self.player.agent_policy.prob_accept(cost))
+        else: 
+            # Parametric UCB probability instead of plain MLE probability
+            p= np.array(self.alg['model'].prob_accept_ucb(cost,1-self.q,self.sub_sample_size))
 
         EU = 0.0
 
@@ -331,35 +362,6 @@ class BayesUCB_EU(): #EU with agent approx model
             EU += -np.dot(p_pay, cost)
 
         return -EU
-
-    def D_optimal(self):
-        if self.reset:
-            self.count=0
-
-        if self.count%2==0:
-            if self.alg['model'].name=="logit" :
-                if self.alg['model'].para_type=="loc-shape":
-                    self.x_mid=self.alg['model'].para_loc
-                    self.b=1/self.alg['model'].para_shape
-            elif self.alg['model'].name=="bayes-logit":
-                if self.alg['model'].para_type=="loc-shape":
-                    self.x_mid=self.alg['model'].u_mean
-                    self.b=1/self.alg['model'].s_mean
-            x=self.x_mid+(1.543/self.b)
-        else:
-            x=self.x_mid-(1.543/self.b)
-        self.count+=1
-        return x
-
-
-
-
-    
-    def A_optimal(self):
-        return 1
-    
-            
-
 
     def approx_D_optimal(self,curr_round):
         if self.reset:

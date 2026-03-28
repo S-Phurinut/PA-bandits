@@ -143,10 +143,10 @@ class MASA_model():
 
             for i in range(128):
                 if i==0:
-                    x0=np.array(self.agent_policy.para_loc)+0.03
-                    print("EU value for true_loc+0.03=",-self.EU_value(x0)," with total cost=",np.sum(x0))
+                    x0=np.array(self.agent_policy.para_loc)+0.01
+                    # print("EU value for true_loc+0.03=",-self.EU_value(x0)," with total cost=",np.sum(x0))
                     pm=PoiBin(np.array(self.agent_policy.prob_accept(x0)))
-                    print("p=",[round(pm.pmf(j),3) for j in range(self.num_agent+1)])
+                    # print("p=",[round(float(pm.pmf(j)),3) for j in range(self.num_agent+1)])
                 else:
                     x0=np.random.rand(self.num_agent,)/self.num_agent
                 opt=sc.optimize.minimize(self.EU_value,x0=x0,bounds=bnds,tol=1E-12)
@@ -161,7 +161,7 @@ class MASA_model():
 
             print("optimal_incentive=",optimal_incentive," with EU=",optimal_utility)
             pm=PoiBin(np.array(self.agent_policy.prob_accept(optimal_incentive)))
-            print("p=",[round(pm.pmf(j),3) for j in range(self.num_agent+1)])
+            print("p=",[round(float(pm.pmf(j)),3) for j in range(self.num_agent+1)])
             return optimal_incentive, optimal_utility
         
     def EU_value(self,cost):

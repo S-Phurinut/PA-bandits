@@ -141,8 +141,13 @@ class TS_alpha_Dirichlet_increment():
                             pm.Binomial("obs", n=self.alpha+self.beta-2, p=f, observed=self.alpha-1)
 
                             # NUTS
+
+                            if info['curr_round']<=self.bandit_alg['refit_max_round_1step']: 
+                                num_draws=20
+                            else: 
+                                num_draws=self.bandit_alg['pymc_draws']
                             idata = pm.sample(
-                                draws=self.bandit_alg['pymc_draws'],          # keep only one posterior draw
+                                draws=num_draws,          # keep only one posterior draw
                                 tune=self.bandit_alg['pymc_tune'],        # warmup / adaptation
                                 chains=self.bandit_alg['pymc_chains'],
                                 cores=self.bandit_alg['pymc_cores'],
