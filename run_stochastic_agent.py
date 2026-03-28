@@ -134,22 +134,23 @@ def main(config):
                                         agent_policy=Agent,
                                         Reward_generator=Reward_generator)
             
+            
+
+            #--------Store data for each run--------
             if config.reward_generator['type']=='random':
                 print("Random Reward func=",sampled_reward)
                 optimal_incentive, optimal_utility = Setting.optimal_solution()
             else:
                 if sim==0:
                     optimal_incentive, optimal_utility = Setting.optimal_solution()
-
-            #--------Store data for each run--------
             wandb.log({"seed":seed,"optimal_utility": optimal_utility})
+            
 
             if Agent_model.name=="bayes-logit":
                 reward_array, _, incentive_array, EU_array, para_loc_array,para_shape_array,var_loc_array,var_shape_array = Setting.run_fixed_budget(max_round=T)
             else:
                 reward_array, _, incentive_array, EU_array, para_loc_array,para_shape_array = Setting.run_fixed_budget(max_round=T)
             
-            # if sim==0:
             
             
             offered_incentive_array[sim,:,:]=incentive_array
