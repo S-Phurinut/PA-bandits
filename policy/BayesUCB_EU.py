@@ -15,7 +15,7 @@ import math
 from poibin import PoiBin
 
 class BayesUCB_EU(): #EU with agent approx model
-    def __init__(self,type_arm,obj_style='UCB-mean',
+    def __init__(self,type_arm,obj_style='UCB-mean',num_burnin_sweeps=0,
                  num_sweeps=10,random_scan=True,eps=1e-12,init_sweep_appr='once',**alg):
         self.obj_style=obj_style
         self.type_arm=type_arm
@@ -46,6 +46,7 @@ class BayesUCB_EU(): #EU with agent approx model
         self.num_sweeps=num_sweeps #Number of full Gibbs sweeps
         self.random_scan=random_scan #If True, update indices in a random permutation each sweep
         self.eps=eps #Numerical safety margin for CDF inversion and interval clamping.
+        self.num_burnin_sweeps=num_burnin_sweeps
         self.init_sweep_appr=init_sweep_appr
         self.init_Gibb_sample=True
         self.sub_sample_size=self.alg.get("sub_sample_size", None)
@@ -59,10 +60,12 @@ class BayesUCB_EU(): #EU with agent approx model
             self.is_cost_learning_done=False
             self.is_model_training_done=False
             self.need_model_training=True
-            self.previous_c=np.ones((self.player.num_agent,))*0.5
+            self.previous_c=np.ones((self.player.num_agent,))/self.player.num_agent
             self.sum_reward=np.zeros((self.player.num_agent,))
             self.num_reward=np.zeros((self.player.num_agent,))
             self.init_Gibb_sample=True
+            self.posterior=np.zeros((self.num_sweeps,self.player.num_agent))
+            self.first_init_Gibbs=True
 
             if self.num_cost_learning=='log2T': 
                 self.num_cost_learning=math.ceil(np.log2(info['max_round']))
@@ -157,6 +160,12 @@ class BayesUCB_EU(): #EU with agent approx model
                 else:
                     if self.init_sweep_appr=="T":
                         self.init_Gibb_sample=True
+                    elif self.init_sweep_appr==1:
+                        if self.first_init_Gibbs:
+                            self.init_Gibb_sample=True
+                        else:
+                            self.init_Gibb_sample=False
+                            self.gibb_sample=self.posterior[-1,:]
 
                     #------------init Gibbs sample by Monotone regression-----------------
                     if self.init_Gibb_sample:
@@ -195,7 +204,7 @@ class BayesUCB_EU(): #EU with agent approx model
                         self.init_Gibb_sample=False
 
 
-                    for _ in range(self.num_sweeps):
+                    for k in range(int(self.num_burnin_sweeps+self.num_sweeps)):
                         if self.random_scan:
                             order = np.random.permutation(self.player.num_agent)
                         else:
@@ -240,7 +249,17 @@ class BayesUCB_EU(): #EU with agent approx model
                                 self.gibb_sample[i] = L
                             elif self.gibb_sample[i] > U:
                                 self.gibb_sample[i] = U
-                    est_reward=np.array(self.gibb_sample) 
+
+                        if   self.alg['est_reward']=='BayesUCB-Gibbs-monotone':
+                            if k>= self.num_burnin_sweeps:
+                                self.posterior[int(k-self.num_burnin_sweeps),:]=self.gibb_sample    
+
+                    if  self.alg['est_reward']=='BayesUCB-Gibbs-monotone':
+                        if self.alg['conf_bound']=='1/T':
+                            q = 1.0 - 1.0 / max(2, info['curr_round'])
+                        est_reward=np.quantile(self.posterior,q=q, axis=0)
+                    elif self.alg['est_reward']=='TS-Gibb-monotone':
+                        est_reward=np.array(self.gibb_sample) 
 
                 eps = 0 #float(1E-1)
                 bnds = [(float(0 - eps), float(1 + eps)) for _ in range(self.player.num_agent)]
@@ -255,7 +274,7 @@ class BayesUCB_EU(): #EU with agent approx model
                     if i==0:
                         x0=np.clip(self.previous_c,1e-6,1-(1e-6))
                     else:
-                        x0=np.clip(np.random.rand(self.player.num_agent,),0.1,0.9)
+                        x0=np.clip(np.random.rand(self.player.num_agent,),0.01,0.9)
 
                     if self.obj_style=='UCB-mean':
                         opt=sc.optimize.minimize(self.EU_value,x0=x0,bounds=bnds,args=(est_reward),tol=1E-12) #,method="SLSQP"
@@ -271,13 +290,13 @@ class BayesUCB_EU(): #EU with agent approx model
                         best_cost=np.array(cost)
 
                 self.previous_c=np.array(best_cost)
-                print("round=",self.curr_round)
-                print("est reward=",np.round(est_reward,4))
-                print("cost=",np.round(best_cost,4))
-                print("prob ucb=",np.round(self.alg['model'].prob_accept_ucb(cost,self.q,self.sub_sample_size),4))
-                print("prob mean=",np.round(self.alg['model'].prob_accept(cost,loc=self.alg['model'].u_mean,shape=self.alg['model'].s_mean),4))
-                print("prob lcb=",np.round(self.alg['model'].prob_accept_ucb(cost,1-self.q,self.sub_sample_size),4))
-                print("num reward=",self.num_reward)
+            print("round=",self.curr_round)
+            print("est reward=",np.round(est_reward,4))
+            print("cost=",np.round(best_cost,4))
+            print("prob ucb=",np.round(self.alg['model'].prob_accept_ucb(cost,self.q,self.sub_sample_size, self.curr_round),4))
+            print("prob mean=",np.round(self.alg['model'].prob_accept(cost,loc=self.alg['model'].u_mean,shape=self.alg['model'].s_mean),4))
+            print("prob lcb=",np.round(self.alg['model'].prob_accept_ucb(cost,1-self.q,self.sub_sample_size, self.curr_round),4))
+            print("num reward=",self.num_reward)
 
             # if info['curr_round']%1000==0: 
             
@@ -294,7 +313,7 @@ class BayesUCB_EU(): #EU with agent approx model
             p = np.array(self.player.agent_policy.prob_accept(cost))
         else: 
             # Parametric UCB probability instead of plain MLE probability
-            p= np.array(self.alg['model'].prob_accept_ucb(cost,self.q,self.sub_sample_size))
+            p= np.array(self.alg['model'].prob_accept_ucb(cost,self.q,self.sub_sample_size, self.curr_round))
 
         EU = 0.0
 
@@ -319,7 +338,7 @@ class BayesUCB_EU(): #EU with agent approx model
             p = np.array(self.player.agent_policy.prob_accept(cost))
         else: 
             # Parametric UCB probability instead of plain MLE probability
-            p= np.array(self.alg['model'].prob_accept_ucb(cost,1-self.q,self.sub_sample_size))
+            p= np.array(self.alg['model'].prob_accept_ucb(cost,1-self.q,self.sub_sample_size, self.curr_round))
 
         EU = 0.0
 
@@ -344,7 +363,7 @@ class BayesUCB_EU(): #EU with agent approx model
             p_reward = np.array(self.player.agent_policy.prob_accept(cost))
             p_pay = p_reward.copy()
         else:
-            p_reward = np.array(self.alg['model'].prob_accept_ucb(cost,self.q,self.sub_sample_size))
+            p_reward = np.array(self.alg['model'].prob_accept_ucb(cost,self.q,self.sub_sample_size, self.curr_round))
             p_pay = np.array(self.alg['model'].prob_accept(cost,loc=self.alg['model'].u_mean,shape=self.alg['model'].s_mean))
 
         EU = 0.0

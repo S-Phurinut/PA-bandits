@@ -288,7 +288,7 @@ class BayesLogit:
         return -loss + penalty
 
     
-    def prob_accept_ucb(self,incentive,quantile=0.9,subsample_size=None,**model_para):
+    def prob_accept_ucb(self,incentive,quantile=0.9,subsample_size=None,random_seed=None,**model_para):
         """
         Bayes-UCB style optimistic acceptance probability from posterior samples.
 
@@ -339,7 +339,7 @@ class BayesLogit:
         n_draws = u.shape[0]
 
         quantile = float(np.clip(quantile, 1e-8, 1 - 1e-8))
-
+        np.random.seed(seed=random_seed)
         # ---------- optional posterior subsampling ----------
         if subsample_size is None:
             subsample_size = u.shape[0]

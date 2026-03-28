@@ -1,0 +1,27 @@
+_target_ : policy.BayesUCB_EU.BayesUCB_EU
+type_arm : participation-based
+num_cost_learning : 0 #10
+cost_alg : null #approx-D-optimal #uniformly-space #D-optimal
+est_reward: BayesUCB-Gibbs-monotone
+name : BayesUCB-EU
+num_optimiser : 16
+is_reward_known : False
+model_training_appr : adaptive-log10 #10
+model_training_max_round_1step : 10
+model_training_max_round_step : 100
+is_model_known : False #True
+prior : null #['beta',['fixed',3],['fixed',1]] #['beta',['linear',1,2],['fixed',1]]s
+
+num_burnin_sweeps : 5
+num_sweeps : 10
+random_scan : True
+eps : 1e-12
+init_sweep_appr : 1
+conf_bound : 1/T
+
+obj_style: UCB-UCB #UCB-mean
+
+
+# for model UCB
+sub_sample_size : 200
+model_conf_bound : 1/T
