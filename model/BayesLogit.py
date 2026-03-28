@@ -177,7 +177,8 @@ class BayesLogit:
             # self.s_mean=np.ones((self.num_agent,))*0.01 
 
             # print("\n new data=",self.X[-1,:],self.Y[-1,:])
-            print("posterior_mean=",self.u_mean,self.s_mean)
+            print("u_mean=",self.u_mean)
+            print("s_mean=",self.s_mean)
             print("num_sample",self.u_sample.shape)
 
     def get_MAP_estimator(self,agent_id):
@@ -285,3 +286,84 @@ class BayesLogit:
             penalty = self.model['shape_prior'][2] * para[1]- (self.model['shape_prior'][1] - 1.0) * np.log(para[1])
         
         return -loss + penalty
+
+    
+    def prob_accept_ucb(self,incentive,quantile=0.9,subsample_size=None,**model_para):
+        """
+        Bayes-UCB style optimistic acceptance probability from posterior samples.
+
+        Parameters
+        ----------
+        incentive : array-like, shape (num_agent,)
+            Incentive for each agent.
+
+        quantile : float, optional
+            Tail level. UCB uses quantile.
+            If None, quantile is chosen from self.model:
+              - fixed self.model["ucb_quantile"], or
+              - BayesUCB-style schedule from curr_round / horizon.
+
+        subsample_size : int, optional
+            Number of posterior draws to use. If None, uses
+            self.model.get("ucb_subsample_size", None).
+
+        model_para : optional
+            loc / shape can be passed explicitly, same style as prob_accept().
+
+        Returns
+        -------
+        p_ucb : ndarray, shape (num_agent,)
+            Optimistic acceptance probability for each agent.
+        """
+        incentive = np.asarray(incentive, dtype=float).reshape(-1,)
+
+        # ---------- posterior draws ----------
+        if "loc" in model_para:
+            u = np.asarray(model_para["loc"], dtype=float)
+        else:
+            u = np.asarray(self.u_sample, dtype=float)
+
+        if "shape" in model_para:
+            s = np.asarray(model_para["shape"], dtype=float)
+        else:
+            s = np.asarray(self.s_sample, dtype=float)
+
+        # Ensure 2D: (num_draws, num_agent)
+        if u.ndim == 1:
+            u = u.reshape(1, -1)
+        if s.ndim == 1:
+            s = s.reshape(1, -1)
+
+        s = np.clip(s, 1e-12, None)
+
+        n_draws = u.shape[0]
+
+        quantile = float(np.clip(quantile, 1e-8, 1 - 1e-8))
+
+        # ---------- optional posterior subsampling ----------
+        if subsample_size is None:
+            subsample_size = u.shape[0]
+
+        if subsample_size is not None:
+            subsample_size = int(subsample_size)
+            if subsample_size > 0 and subsample_size < n_draws:
+
+
+                idx = np.random.choice(
+                    n_draws,
+                    size=subsample_size,
+                    replace=False
+                )
+                u = u[idx, :]
+                s = s[idx, :]
+                n_draws = u.shape[0]
+
+        # ---------- posterior p(x) samples ----------
+        x = incentive.reshape(1, -1)
+        p_samples = expit((x - u) / s) * (x >= self.buffer)
+        p_samples = np.clip(p_samples, 1e-12, 1 - 1e-12)
+
+        # ---------- Bayes-UCB summary ----------
+        p_ucb = np.quantile(p_samples, quantile, axis=0)
+
+        return np.clip(np.asarray(p_ucb).reshape(-1,), 1e-12, 1 - 1e-12)

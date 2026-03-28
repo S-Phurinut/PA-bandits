@@ -1,0 +1,6 @@
+_target_ : model.LaplaceLogit.Laplace_Logit
+name : logit
+est_appr : MAP 
+shape_prior : ["gamma",1.5,15]
+c_mode : 'fixed'
+c_value : 2.5
