@@ -250,7 +250,7 @@ class BayesUCB_EU(): #EU with agent approx model
                             elif self.gibb_sample[i] > U:
                                 self.gibb_sample[i] = U
 
-                        if   self.alg['est_reward']=='BayesUCB-Gibbs-monotone':
+                        if  self.alg['est_reward']=='BayesUCB-Gibbs-monotone':
                             if k>= self.num_burnin_sweeps:
                                 self.posterior[int(k-self.num_burnin_sweeps),:]=self.gibb_sample    
 
@@ -258,7 +258,7 @@ class BayesUCB_EU(): #EU with agent approx model
                         if self.alg['conf_bound']=='1/T':
                             q = 1.0 - 1.0 / max(2, info['curr_round'])
                         est_reward=np.quantile(self.posterior,q=q, axis=0)
-                    elif self.alg['est_reward']=='TS-Gibb-monotone':
+                    elif self.alg['est_reward']=='TS-Gibbs-monotone':
                         est_reward=np.array(self.gibb_sample) 
 
                 eps = 0 #float(1E-1)

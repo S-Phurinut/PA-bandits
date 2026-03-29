@@ -185,9 +185,9 @@ class TS_EU(): #EU with agent approx model
                 # print(-self.EU_value(np.array([0,0]),est_reward))
                 for i in range(0,self.num_optimiser):
                     if i==0:
-                        x0=self.previous_c
+                        x0=np.clip(self.previous_c,1e-6,1-(1e-6))
                     else:
-                        x0=np.clip(np.random.rand(self.player.num_agent,),0.1,0.9)
+                        x0=np.clip(np.random.rand(self.player.num_agent,),0.01,0.9)
 
                     opt=sc.optimize.minimize(self.EU_value,x0=x0,bounds=bnds,args=(est_reward),tol=1E-12) #,method="SLSQP"
                     cost=opt.x

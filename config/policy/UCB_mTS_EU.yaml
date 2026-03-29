@@ -2,7 +2,7 @@ _target_ : policy.BayesUCB_EU.BayesUCB_EU
 type_arm : participation-based
 num_cost_learning : 0 #10
 cost_alg : null #approx-D-optimal #uniformly-space #D-optimal
-est_reward: TS-Gibb-monotone 
+est_reward: TS-Gibbs-monotone 
 name : BayesUCB-EU
 num_optimiser : 16
 is_reward_known : False

@@ -15,7 +15,7 @@ import math
 from poibin import PoiBin
 
 class gEU_Gibbs_Monotone(): #EU with agent approx model
-    def __init__(self,type_arm,
+    def __init__(self,type_arm,num_burnin_sweeps=0,
                  num_sweeps=10,random_scan=True,eps=1e-12,init_sweep_appr='once',**alg):
         self.type_arm=type_arm
         self.alg=alg
@@ -45,21 +45,26 @@ class gEU_Gibbs_Monotone(): #EU with agent approx model
         self.num_sweeps=num_sweeps #Number of full Gibbs sweeps
         self.random_scan=random_scan #If True, update indices in a random permutation each sweep
         self.eps=eps #Numerical safety margin for CDF inversion and interval clamping.
+        self.num_burnin_sweeps=num_burnin_sweeps
         self.init_sweep_appr=init_sweep_appr
         self.init_Gibb_sample=True
+        self.sub_sample_size=self.alg.get("sub_sample_size", None)
 
     def update_data(self,player):
         self.player=player
 
     def run(self,**info):
+        self.curr_round = info['curr_round']
         if info['curr_round']==1 and self.reset:
             self.is_cost_learning_done=False
             self.is_model_training_done=False
             self.need_model_training=True
-            self.previous_c=np.ones((self.player.num_agent,))*0.5
+            self.previous_c=np.ones((self.player.num_agent,))/self.player.num_agent
             self.sum_reward=np.zeros((self.player.num_agent,))
             self.num_reward=np.zeros((self.player.num_agent,))
             self.init_Gibb_sample=True
+            self.posterior=np.zeros((self.num_sweeps,self.player.num_agent))
+            self.first_init_Gibbs=True
 
             if self.num_cost_learning=='log2T': 
                 self.num_cost_learning=math.ceil(np.log2(info['max_round']))
@@ -91,7 +96,6 @@ class gEU_Gibbs_Monotone(): #EU with agent approx model
             
         else:
             self.reset=False
-            #----------Update agent model learning----------
             if info['curr_round']>1 and self.is_model_known==False:
                 train_model=False
                 if type(self.alg['model_training_appr'])==int:
@@ -110,6 +114,7 @@ class gEU_Gibbs_Monotone(): #EU with agent approx model
                     print("logit model_para=",self.alg['model'].para_loc,self.alg['model'].para_shape)
                     self.is_model_training_done=True
 
+
             #-----------Update Reward Data---------
             n=np.sum(info['previous_agent_response'])-1
             if n>=0:
@@ -123,21 +128,21 @@ class gEU_Gibbs_Monotone(): #EU with agent approx model
 
 
         if info['curr_round']<=self.num_cost_learning:
-            if info['curr_round']==self.num_cost_learning:
-                self.is_cost_learning_done=True
-
             if self.cost_alg=="uniformly-space":
                 best_cost=np.ones((self.player.num_agent,))*self.cost_list[int(info['curr_round']-1)]
-            elif self.cost_alg=="D-optimal":
-                best_cost=np.clip(self.D_optimal(),0,1)
-            elif self.cost_alg=="A-optimal":
-                pass
             elif self.cost_alg=="approx-D-optimal":
                 best_cost=np.clip(self.approx_D_optimal(info['curr_round']),0,1)
-                self.need_model_training=True
+                self.need_model_training=False
                 print("D-optimal next point=",best_cost)
-        else:  
+
+            if info['curr_round']==self.num_cost_learning:
+                self.is_cost_learning_done=True
+                self.need_model_training=True  
+
+        else: 
+            self.need_model_training=True   
             self.is_cost_learning_done=True      
+
             #====================Contracting Part============================
             if self.type_arm=='participation-based':
 
@@ -147,6 +152,12 @@ class gEU_Gibbs_Monotone(): #EU with agent approx model
                 else:
                     if self.init_sweep_appr=="T":
                         self.init_Gibb_sample=True
+                    elif self.init_sweep_appr==1:
+                        if self.first_init_Gibbs:
+                            self.init_Gibb_sample=True
+                        else:
+                            self.init_Gibb_sample=False
+                            self.gibb_sample=self.posterior[-1,:]
 
                     #------------init Gibbs sample by Monotone regression-----------------
                     if self.init_Gibb_sample:
@@ -185,7 +196,7 @@ class gEU_Gibbs_Monotone(): #EU with agent approx model
                         self.init_Gibb_sample=False
 
 
-                    for _ in range(self.num_sweeps):
+                    for k in range(int(self.num_burnin_sweeps+self.num_sweeps)):
                         if self.random_scan:
                             order = np.random.permutation(self.player.num_agent)
                         else:
@@ -230,7 +241,17 @@ class gEU_Gibbs_Monotone(): #EU with agent approx model
                                 self.gibb_sample[i] = L
                             elif self.gibb_sample[i] > U:
                                 self.gibb_sample[i] = U
-                    est_reward=np.array(self.gibb_sample) 
+
+                        if  self.alg['est_reward']=='BayesUCB-Gibbs-monotone':
+                            if k>= self.num_burnin_sweeps:
+                                self.posterior[int(k-self.num_burnin_sweeps),:]=self.gibb_sample    
+
+                    if  self.alg['est_reward']=='BayesUCB-Gibbs-monotone':
+                        if self.alg['conf_bound']=='1/T':
+                            q = 1.0 - 1.0 / max(2, info['curr_round'])
+                        est_reward=np.quantile(self.posterior,q=q, axis=0)
+                    elif self.alg['est_reward']=='TS-Gibbs-monotone':
+                        est_reward=np.array(self.gibb_sample) 
 
                 eps = 0 #float(1E-1)
                 bnds = [(float(0 - eps), float(1 + eps)) for _ in range(self.player.num_agent)]
@@ -239,9 +260,9 @@ class gEU_Gibbs_Monotone(): #EU with agent approx model
 
                 for i in range(0,self.num_optimiser):
                     if i==0:
-                        x0=self.previous_c
+                        x0=np.clip(self.previous_c,1e-6,1-(1e-6))
                     else:
-                        x0=np.clip(np.random.rand(self.player.num_agent,),0.1,0.9)
+                        x0=np.clip(np.random.rand(self.player.num_agent,),0.01,0.9)
 
                     opt=sc.optimize.minimize(self.EU_value,x0=x0,bounds=bnds,args=(est_reward),tol=1E-12) #,method="SLSQP"
                     cost=opt.x
