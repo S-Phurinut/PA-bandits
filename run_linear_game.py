@@ -89,8 +89,9 @@ def main(config):
                         else:
                             sampled_reward=np.random.rand(N,)
                     elif "dirichlet-gap" in list(config.reward_generator['mean_prob_constraint']):
-                        g = np.random.dirichlet([config.reward_generator.alpha]*(N+1))     # gaps sum to 1       
-                        sampled_reward=np.cumsum(g[:-1])  # f in [0,1], monotone
+                        g = np.random.dirichlet([config.reward_generator.alpha]*(N+1))     # gaps sum to 1
+                        b = config.reward_generator.get('endpoint_bound',1)        
+                        sampled_reward=np.cumsum(g[:-1]*b)  # f in [0,1], monotone
                     elif "dirichlet-gap-endpoint" in list(config.reward_generator['mean_prob_constraint']):
                         g = np.random.dirichlet([config.reward_generator.alpha]*(N))     # gaps sum to 1       
                         if config.reward_generator['endpoint_dist'][0]=='Uniform':
