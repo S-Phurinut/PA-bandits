@@ -30,9 +30,6 @@ class TS_alpha_Dirichlet_increment_concave():
         self.need_endpoint_dist=self.bandit_alg.get('need_endpoint_dist',False)
         self.reset=True
 
-
-        
-
     def update_data(self,player):
         self.player=player
 
@@ -123,7 +120,7 @@ class TS_alpha_Dirichlet_increment_concave():
 
                     if refit_model:
                         with pm.Model() as model:
-                            if self.bandit_alg['need_endpoint_dist']:
+                            if self.need_endpoint_dist:
                             
                                 A = pm.Gamma("A", alpha=1.0, beta=1.0)
                                 a_vec = pt.ones(self.player.num_agent) * A

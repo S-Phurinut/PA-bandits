@@ -103,7 +103,8 @@ def main(config):
                     elif "dirichlet-concave" in list(config.reward_generator['mean_prob_constraint']):
                         g = np.random.dirichlet([config.reward_generator.alpha]*(N+1))[:-1]
                         slopes = np.sort(g)[::-1]
-                        sampled_reward = np.cumsum(slopes)
+                        b = config.reward_generator.get('endpoint_bound',1)        
+                        sampled_reward = np.cumsum(slopes*b)
                     elif "dirichlet-concave-endpoint" in list(config.reward_generator['mean_prob_constraint']):
                         g = np.random.dirichlet([config.reward_generator.alpha]*(N))
                         if config.reward_generator['endpoint_dist'][0]=='Uniform':

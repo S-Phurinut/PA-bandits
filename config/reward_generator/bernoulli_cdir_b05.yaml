@@ -1,0 +1,9 @@
+_target_ : Reward_generator.Participation_based_Reward
+type_dist : Bernoulli
+mean_prob : null
+mean_prob_constraint : ["dirichlet-gap"]
+alpha : 1
+endpoint_bound : 0.5
+success_value : 1
+type : random
+
