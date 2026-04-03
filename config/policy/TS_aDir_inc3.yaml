@@ -10,17 +10,17 @@ is_reward_known : False
 is_cost_known : False #True
 
 refit_step : 100 #adaptive-log10
-refit_max_round_1step : 10 #20 
-refit_max_round_step : 2000
+refit_max_round_1step : 100 #20 
+refit_max_round_step : null
 
 min_sample_required : 0
 stopping_criteria : null
 include_arm0 : True
 
-pymc_draws : 500 #500
-pymc_tune : 1000 #1000
+pymc_draws : 2000 #500
+pymc_tune : 500 #1000
 pymc_target_accept : 0.9
-pymc_cores : 2
-pymc_chains : 2
+pymc_cores : 1
+pymc_chains : 1
 
 need_endpoint_dist : True
