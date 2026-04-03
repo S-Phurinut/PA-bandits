@@ -2,6 +2,7 @@ import numpy as np
 from scipy.stats import beta as beta_dist
 import scipy.signal
 import scipy.signal.windows
+import pytensor.tensor as pt
 
 # Patch older import name for PyMC compatibility
 if not hasattr(scipy.signal, "gaussian"):
@@ -9,9 +10,8 @@ if not hasattr(scipy.signal, "gaussian"):
 import pymc as pm
 import math
 
-class TS_alpha_Dirichlet_increment():
-    def __init__(self,type_arm,num_cost_learning=1,cost_alg='MultiBinSearch',
-                 dir_para=0.5,**bandit_alg):
+class TS_alpha_Dirichlet_increment_concave():
+    def __init__(self,type_arm,num_cost_learning=1,cost_alg='MultiBinSearch',**bandit_alg):
         self.type_arm=type_arm
         self.num_cost_learning=num_cost_learning
         self.cost_alg=cost_alg
@@ -123,9 +123,10 @@ class TS_alpha_Dirichlet_increment():
 
                     if refit_model:
                         with pm.Model() as model:
-                            if self.need_endpoint_dist:
+                            if self.bandit_alg['need_endpoint_dist']:
+                            
                                 A = pm.Gamma("A", alpha=1.0, beta=1.0)
-                                a_vec = pm.math.ones(self.player.num_agent ) * A 
+                                a_vec = pt.ones(self.player.num_agent) * A
 
                                 # shape of slopes
                                 p = pm.Dirichlet("p", a=a_vec)
@@ -133,23 +134,19 @@ class TS_alpha_Dirichlet_increment():
                                 # uniform endpoint
                                 total = pm.Uniform("total", 0.0, 1.0)
 
-                                f = pm.Deterministic("f", total * pm.math.cumsum(p))
-
+                                increments = pt.sort(p)[::-1]
+                                f = pm.Deterministic("f", total * pt.cumsum(p))
                             else:
                                 # total concentration
                                 A = pm.Gamma("A", alpha=1.0, beta=1.0)
 
-                                # symmetric Dirichlet with para = A
+                                # symmetric Dirichlet 
                                 a_vec = pm.math.ones(self.player.num_agent + 1) * A 
-                                # Positive latent variables
-                                g = pm.Gamma("g", alpha=a_vec, beta=1.0, shape=self.player.num_agent + 1)
+                                
+                                p = pm.Dirichlet("p", a=a_vec)
 
-                                # Normalize to simplex
-                                p = pm.Deterministic("p", g / pm.math.sum(g))
-
-                                # Monotone probabilities:
-                                # f(1)=p[0], f(2)=p[0]+p[1], ..., f(N)=p[0]+...+p[N-1]
-                                f = pm.Deterministic("f", pm.math.cumsum(p)[:-1])
+                                increments = pt.sort(p[:-1])[::-1]
+                                f = pm.Deterministic("f", pt.cumsum(increments))
 
                             # Binomial likelihood at each x
                             pm.Binomial("obs", n=self.alpha+self.beta-2, p=f, observed=self.alpha-1)
@@ -165,7 +162,7 @@ class TS_alpha_Dirichlet_increment():
                                 tune=self.bandit_alg['pymc_tune'],        # warmup / adaptation
                                 chains=self.bandit_alg['pymc_chains'],
                                 cores=self.bandit_alg['pymc_cores'],
-                                target_accept=self.bandit_alg['pymc_target_accept'],
+                                step=pm.Metropolis(),
                             )
 
                         self.f_sample = idata.posterior["f"].values[0, :]

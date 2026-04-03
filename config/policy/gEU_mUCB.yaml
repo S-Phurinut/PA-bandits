@@ -2,7 +2,7 @@ _target_ : policy.gEU_Gibbs_monotone.gEU_Gibbs_Monotone
 type_arm : participation-based
 num_cost_learning : 0
 cost_alg : null #uniformly-space #D-optimal
-est_reward: BayesUCB-Gibbs-monoton
+est_reward: BayesUCB-Gibbs-monotone
 name : gEU
 num_optimiser : 16
 is_reward_known : False

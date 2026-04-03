@@ -67,18 +67,22 @@ def main(config):
                     if "uniform" in list(config.reward_generator['mean_prob_constraint']):
                         if "increasing" in list(config.reward_generator['mean_prob_constraint']):
                             if "concave" in list(config.reward_generator['mean_prob_constraint']):
-                                # Step 1: uniform on simplex sum_{j=1}^n z_j <= 1
-                                z = np.random.dirichlet(np.ones(N + 1))[:-1]   # keep z_1,...,z_n
+                                # # Step 1: uniform on simplex sum_{j=1}^n z_j <= 1
+                                # z = np.random.dirichlet(np.ones(N + 1))[:-1]   # keep z_1,...,z_n
 
-                                # Step 2: y_j = z_j / j
-                                j = np.arange(1, N + 1)
-                                y = z / j
+                                # # Step 2: y_j = z_j / j
+                                # j = np.arange(1, N + 1)
+                                # y = z / j
 
-                                # Step 3: decreasing slopes Delta_i = sum_{j=i}^n y_j
-                                slopes = np.cumsum(y[::-1])[::-1]
+                                # # Step 3: decreasing slopes Delta_i = sum_{j=i}^n y_j
+                                # slopes = np.cumsum(y[::-1])[::-1]
 
-                                # Step 4: function values
-                                sampled_reward=np.cumsum(slopes)
+                                # # Step 4: function values
+                                # sampled_reward=np.cumsum(slopes)
+
+                                g = np.random.dirichlet([1]*(N+1))[:-1]
+                                slopes = np.sort(g)[::-1]
+                                sampled_reward = np.cumsum(slopes)
                             else:
                                 sampled_reward=np.random.rand(N,)
                                 sampled_reward=np.sort(sampled_reward)
@@ -87,11 +91,26 @@ def main(config):
                     elif "dirichlet-gap" in list(config.reward_generator['mean_prob_constraint']):
                         g = np.random.dirichlet([config.reward_generator.alpha]*(N+1))     # gaps sum to 1       
                         sampled_reward=np.cumsum(g[:-1])  # f in [0,1], monotone
+                    elif "dirichlet-gap-endpoint" in list(config.reward_generator['mean_prob_constraint']):
+                        g = np.random.dirichlet([config.reward_generator.alpha]*(N))     # gaps sum to 1       
+                        if config.reward_generator['endpoint_dist'][0]=='Uniform':
+                            E=np.random.uniform(low=config.reward_generator['endpoint_dist'][1],high=config.reward_generator['endpoint_dist'][2])
+                        if config.reward_generator['endpoint_dist'][0]=='fixed':
+                            E=config.reward_generator['endpoint_dist'][1]
+                        sampled_reward=np.cumsum(g*E)  # f in [0,1], monotone
+
                     elif "dirichlet-concave" in list(config.reward_generator['mean_prob_constraint']):
-                        g = np.random.dirichlet([config.reward_generator.alpha]*N)
+                        g = np.random.dirichlet([config.reward_generator.alpha]*(N+1))[:-1]
                         slopes = np.sort(g)[::-1]
-                        H = np.random.rand()
-                        sampled_reward = H * np.cumsum(slopes)
+                        sampled_reward = np.cumsum(slopes)
+                    elif "dirichlet-concave-endpoint" in list(config.reward_generator['mean_prob_constraint']):
+                        g = np.random.dirichlet([config.reward_generator.alpha]*(N))
+                        if config.reward_generator['endpoint_dist'][0]=='Uniform':
+                            E=np.random.uniform(low=config.reward_generator['endpoint_dist'][1],high=config.reward_generator['endpoint_dist'][2])
+                        if config.reward_generator['endpoint_dist'][0]=='fixed':
+                            E=config.reward_generator['endpoint_dist'][1]
+                        slopes = np.sort(g)[::-1]*E
+                        sampled_reward = np.cumsum(slopes)
 
                     sampled_reward=np.clip(sampled_reward,0,1)
                     Reward_generator.set_mean(mean=list(sampled_reward))

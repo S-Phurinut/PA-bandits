@@ -20,5 +20,5 @@ obj_style: UCB-UCB #UCB-mean
 
 
 # for model UCB
-sub_sample_size : 200
+sub_sample_size : 100
 model_conf_bound : 1/T
