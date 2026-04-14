@@ -48,6 +48,11 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
         self.init_sweep_appr=init_sweep_appr
         self.init_Gibb_sample=True
 
+        # -------- KL smoothing config --------
+        self.kl_lambda = self.alg.get("kl_lambda", 0.0)
+        self.kl_mode = self.alg.get("kl_mode", "forward")   # "forward", "reverse", "symmetric"
+        self.kl_decay = self.alg.get("kl_decay", None)      # None, "1/t", "1/sqrt_t"
+
     def update_data(self,player):
         self.player=player
 
@@ -57,6 +62,7 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
             self.is_model_training_done=False
             self.need_model_training=True
             self.previous_c=np.ones((self.player.num_agent,))/self.player.num_agent
+            self.previous_p = np.ones((self.player.num_agent,))/self.player.num_agent
             self.sum_reward=np.zeros((self.player.num_agent,))
             self.num_reward=np.zeros((self.player.num_agent,))
             self.posterior=np.zeros((self.num_sweeps,self.player.num_agent))
@@ -282,6 +288,12 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
                         best_cost=np.array(cost)
 
                 self.previous_c=np.array(best_cost)
+
+                if self.is_model_known:
+                    self.previous_p = np.array(self.player.agent_policy.prob_accept(best_cost))
+                else:
+                    self.previous_p = np.array(self.alg['model'].prob_accept(best_cost, **self.model_para_sample))
+
             if info['curr_round']%1000==0: print("num reward=",self.num_reward)
 
             print("round=",info['curr_round'])
@@ -295,28 +307,73 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
 
         return best_cost   
 
-    def EU_value(self,cost,reward):
+    def EU_value(self, cost, reward):
         if self.is_model_known:
-            p=np.array(self.player.agent_policy.prob_accept(cost))
+            p = np.array(self.player.agent_policy.prob_accept(cost))
         else:
-            p=np.array(self.alg['model'].prob_accept(cost,**self.model_para_sample))
-        EU=0
+            p = np.array(self.alg['model'].prob_accept(cost, **self.model_para_sample))
 
-        # if np.sum(np.array(cost)<=0)>=self.player.num_agent:
-        #     EU+=0
-        # else:
-        if np.sum(p<=1E-4)>=self.player.num_agent:
-            EU+=0
-        elif np.sum(p>=1-1E-12)>=self.player.num_agent:
-            EU+=reward[self.player.num_agent-1]-np.dot(p,cost)
+        EU = 0.0
+
+        if np.sum(p <= 1E-4) >= self.player.num_agent:
+            EU += 0.0
+        elif np.sum(p >= 1 - 1E-12) >= self.player.num_agent:
+            EU += reward[self.player.num_agent - 1] - np.dot(p, cost)
         else:
             pb = PoiBin(p)
-            num_offered_agent=int(np.sum(p>1E-6))
-            num_guaranteed_agent=int(np.sum(p>=1-1E-6))
-            for arm in range(max(num_guaranteed_agent,1),num_offered_agent+1): #math.comb is wrong
-                EU+=reward[arm-1]*np.clip(pb.pmf(arm), 0, 1)
-            EU+=-np.dot(p,cost)
-        return -EU 
+            num_offered_agent = int(np.sum(p > 1E-6))
+            num_guaranteed_agent = int(np.sum(p >= 1 - 1E-6))
+            for arm in range(max(num_guaranteed_agent, 1), num_offered_agent + 1):
+                EU += reward[arm - 1] * np.clip(pb.pmf(arm), 0, 1)
+            EU += -np.dot(p, cost)
+
+        # -------- KL smoothing in acceptance-probability space --------
+        lam = self.get_kl_lambda()
+        if lam > 0:
+            smooth_penalty = self.kl_smoothing_penalty(
+                p_current=p,
+                p_reference=self.previous_p
+            )
+            EU = EU - lam * smooth_penalty
+
+        return -EU
+
+    def get_kl_lambda(self):
+        lam = float(self.kl_lambda)
+        if self.kl_decay is None:
+            return lam
+
+        t = max(int(getattr(self, "curr_round", 1)), 1)
+
+        if self.kl_decay == "1/t":
+            return lam / t
+        elif self.kl_decay == "1/sqrt_t":
+            return lam / np.sqrt(t)
+        else:
+            return lam
+
+    def bernoulli_kl(self, p, q):
+        p = np.clip(np.asarray(p, dtype=float), 1e-12, 1 - 1e-12)
+        q = np.clip(np.asarray(q, dtype=float), 1e-12, 1 - 1e-12)
+        return p * np.log(p / q) + (1 - p) * np.log((1 - p) / (1 - q))
+
+    def kl_smoothing_penalty(self, p_current, p_reference):
+        p_current = np.clip(np.asarray(p_current, dtype=float), 1e-12, 1 - 1e-12)
+        p_reference = np.clip(np.asarray(p_reference, dtype=float), 1e-12, 1 - 1e-12)
+
+        if self.kl_mode == "forward":
+            # KL(current || previous)
+            return float(np.sum(self.bernoulli_kl(p_current, p_reference)))
+        elif self.kl_mode == "reverse":
+            # KL(previous || current)
+            return float(np.sum(self.bernoulli_kl(p_reference, p_current)))
+        elif self.kl_mode == "symmetric":
+            return float(
+                np.sum(self.bernoulli_kl(p_current, p_reference)) +
+                np.sum(self.bernoulli_kl(p_reference, p_current))
+            )
+        else:
+            raise ValueError("kl_mode must be 'forward', 'reverse', or 'symmetric'")
     
 
     def approx_D_optimal(self,curr_round):
