@@ -10,7 +10,7 @@ is_reward_known : False
 is_cost_known : False #True
 
 refit_step : 100
-refit_max_round_1step : 100 #20 
+refit_max_round_1step : 50 #20 
 refit_max_round_step : 2000
 
 min_sample_required : 0

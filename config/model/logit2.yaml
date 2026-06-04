@@ -1,0 +1,4 @@
+_target_ : model.logit.Logit
+name : logit
+est_appr : MAP #MLE
+shape_prior : ['LogNormal', 0.01,1.25]

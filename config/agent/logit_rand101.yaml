@@ -1,0 +1,7 @@
+_target_ : agent.logit.Logit
+num_agent : 10 
+name : logit
+para_loc: random
+para_loc_dist : ['Beta',1.5,12.3]
+para_shape : random
+para_shape_dist : ['Gamma',1.2,40]

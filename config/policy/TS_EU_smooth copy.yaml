@@ -15,4 +15,4 @@ prior : null #['beta',['fixed',3],['fixed',1]] #['beta',['linear',1,2],['fixed',
 
 kl_lambda : 0.05
 kl_mode : forward
-kl_decay : 1/sqrt_t
+kl_decay : null #1/sqrt_t

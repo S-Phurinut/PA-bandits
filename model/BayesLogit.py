@@ -83,6 +83,16 @@ class BayesLogit:
                     s = pm.Exponential("s", lam=self.model['shape_prior'][1], shape=self.num_agent)     # (N,) shape parameter
                 elif self.model['shape_prior'][0]=='gamma':
                     s = pm.Gamma("s",alpha=self.model['shape_prior'][1],beta=self.model['shape_prior'][2],shape=self.num_agent)
+                elif self.model['shape_prior'][0].lower() == 'lognormal':
+                    median = self.model['shape_prior'][1]   # 0.01
+                    sigma = self.model['shape_prior'][2]    # 1.25
+
+                    s = pm.LogNormal(
+                        "s",
+                        mu=np.log(median),
+                        sigma=sigma,
+                        shape=self.num_agent
+                    )
 
                 z = (self.X - u) / s          # (T, N)
     
@@ -275,16 +285,44 @@ class BayesLogit:
             return p_samples.reshape(-1,)
 
     def CE_loss(self,para,X,y):
-        # Binary cross-entropy loss
-        y_pred = expit((X-para[0])/para[1])
+        # Parameters
+        u = para[0]
+        s = para[1]
+
+        # Prevent invalid scale
+        if s <= 0:
+            return np.inf
+
+        # Binary cross-entropy log-likelihood
+        y_pred = expit((X - u) / s)
+
         eps = 1e-12
         y_pred = np.clip(y_pred, eps, 1 - eps)
-        loss = np.sum(y * np.log(y_pred) + (1 - y) * np.log(1 - y_pred))
-        
 
-        if self.model['shape_prior'][0]=="gamma":
-            penalty = self.model['shape_prior'][2] * para[1]- (self.model['shape_prior'][1] - 1.0) * np.log(para[1])
+        loss = np.sum(
+            y * np.log(y_pred) + (1 - y) * np.log(1 - y_pred)
+        )
         
+        if self.model['shape_prior'][0].lower() == "gamma":
+            alpha = self.model['shape_prior'][1]
+            rate = self.model['shape_prior'][2]
+
+            penalty = rate * s - (alpha - 1.0) * np.log(s)
+
+        elif self.model['shape_prior'][0].lower() == "lognormal":
+            median = self.model['shape_prior'][1]  # e.g. 0.01
+            sigma = self.model['shape_prior'][2]   # e.g. 1.25
+
+            mu = np.log(median)
+
+            penalty = (
+                np.log(s)
+                + ((np.log(s) - mu) ** 2) / (2 * sigma ** 2)
+            )
+
+        else:
+            penalty = 0
+
         return -loss + penalty
 
     

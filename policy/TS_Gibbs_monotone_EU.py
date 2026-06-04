@@ -111,7 +111,7 @@ class TS_Gibbs_Monotone_EU(): #EU with agent approx model
                     elif self.alg['model_training_appr']=='T':
                         train_model=True
                     elif self.alg['model_training_appr']=="adaptive-log10":
-                        refit_step=max(int(10**(math.floor(np.log10(info['curr_round'])))),1)
+                        refit_step=max(int(10**(math.floor(np.log10(info['curr_round']-1)))),1)
                         if info['curr_round']%min(refit_step,self.alg['model_training_max_round_step'])==0  or info['curr_round']<=self.alg['model_training_max_round_1step'] :
                             train_model=True
                         else:

@@ -52,18 +52,50 @@ class Logit():
         # print("opt_loss_arm1=",self.CE_loss([self.para_loc[arm],self.para_shape[arm]],X[:,arm],Y[:,arm]))
         # print("true_loss_arm1=",self.CE_loss([0.01*(arm+1),0.01],X[:,arm],Y[:,arm]))
 
-    def CE_loss(self,para,X,y):
-        # Binary cross-entropy loss
-        y_pred = expit((X-para[0])/para[1])
+    def CE_loss(self, para, X, y):
+        # Parameters
+        u = para[0]
+        s = para[1]
+
+        # Prevent invalid scale
+        if s <= 0:
+            return np.inf
+
+        # Binary cross-entropy log-likelihood
+        y_pred = expit((X - u) / s)
+
         eps = 1e-12
         y_pred = np.clip(y_pred, eps, 1 - eps)
-        loss = np.sum(y * np.log(y_pred) + (1 - y) * np.log(1 - y_pred))
-        
-        if self.model['est_appr']=='MLE':
-            penalty=0
-        elif self.model['est_appr']=='MAP':
-            if self.model['shape_prior'][0]=="gamma":
-                penalty = self.model['shape_prior'][2] * para[1]- (self.model['shape_prior'][1] - 1.0) * np.log(para[1])
+
+        loss = np.sum(
+            y * np.log(y_pred) + (1 - y) * np.log(1 - y_pred)
+        )
+
+        if self.model['est_appr'] == 'MLE':
+            penalty = 0
+
+        elif self.model['est_appr'] == 'MAP':
+
+            if self.model['shape_prior'][0].lower() == "gamma":
+                alpha = self.model['shape_prior'][1]
+                rate = self.model['shape_prior'][2]
+
+                penalty = rate * s - (alpha - 1.0) * np.log(s)
+
+            elif self.model['shape_prior'][0].lower() == "lognormal":
+                median = self.model['shape_prior'][1]  # e.g. 0.01
+                sigma = self.model['shape_prior'][2]   # e.g. 1.25
+
+                mu = np.log(median)
+
+                penalty = (
+                    np.log(s)
+                    + ((np.log(s) - mu) ** 2) / (2 * sigma ** 2)
+                )
+
+            else:
+                penalty = 0
+
         return -loss + penalty
 
     def prob_accept(self,incentive): #prob of accept distribution 

@@ -72,61 +72,79 @@ def main(config):
                 if "uniform" in list(config.reward_generator['mean_prob_constraint']):
                     if "increasing" in list(config.reward_generator['mean_prob_constraint']):
                         if "concave" in list(config.reward_generator['mean_prob_constraint']):
-                            # Step 1: uniform on simplex sum_{j=1}^n z_j <= 1
-                            z = np.random.dirichlet(np.ones(N + 1))[:-1]   # keep z_1,...,z_n
 
-                            # Step 2: y_j = z_j / j
-                            j = np.arange(1, N + 1)
-                            y = z / j
-
-                            # Step 3: decreasing slopes Delta_i = sum_{j=i}^n y_j
-                            slopes = np.cumsum(y[::-1])[::-1]
-
-                            # Step 4: function values
-                            sampled_reward=np.cumsum(slopes)
+                            g = np.random.dirichlet([1]*(N+1))[:-1]
+                            slopes = np.sort(g)[::-1]
+                            sampled_reward = np.cumsum(slopes)
                         else:
                             sampled_reward=np.random.rand(N,)
                             sampled_reward=np.sort(sampled_reward)
                     else:
                         sampled_reward=np.random.rand(N,)
                 elif "dirichlet-gap" in list(config.reward_generator['mean_prob_constraint']):
-                    g = np.random.dirichlet([config.reward_generator.alpha]*(N+1))     # gaps sum to 1       
-                    sampled_reward=np.cumsum(g[:-1])  # f in [0,1], monotone
-                elif "dirichlet-concave" in list(config.reward_generator['mean_prob_constraint']):
-                    g = np.random.dirichlet([config.reward_generator.alpha]*N)
-                    slopes = np.sort(g)[::-1]
-                    H = np.random.rand()
-                    sampled_reward = H * np.cumsum(slopes)
+                    g = np.random.dirichlet([config.reward_generator.alpha]*(N+1))     # gaps sum to 1
+                    b = config.reward_generator.get('endpoint_bound',1)        
+                    sampled_reward=np.cumsum(g[:-1]*b)  # f in [0,1], monotone
+                elif "dirichlet-gap-endpoint" in list(config.reward_generator['mean_prob_constraint']):
+                    g = np.random.dirichlet([config.reward_generator.alpha]*(N))     # gaps sum to 1       
+                    if config.reward_generator['endpoint_dist'][0]=='Uniform':
+                        E=np.random.uniform(low=config.reward_generator['endpoint_dist'][1],high=config.reward_generator['endpoint_dist'][2])
+                    if config.reward_generator['endpoint_dist'][0]=='fixed':
+                        E=config.reward_generator['endpoint_dist'][1]
+                    sampled_reward=np.cumsum(g*E)  # f in [0,1], monotone
 
                 sampled_reward=np.clip(sampled_reward,0,1)
                 Reward_generator.set_mean(mean=list(sampled_reward))
 
+            Agent=hydra.utils.instantiate(config.agent)
+
             if type(config.agent['para_loc'])==str:
-                if config.setting['para_loc']=='random':
-                    if config.setting['para_loc_dist'][0]=='Uniform':
-                        low=np.ones(N,)*config.setting['para_loc_dist'][1]
-                        high=np.ones(N,)*config.setting['para_loc_dist'][2]
+                if config.agent['para_loc']=='random':
+                    if config.agent['para_loc_dist'][0]=='Uniform':
+                        low=np.ones(N,)*config.agent['para_loc_dist'][1]
+                        high=np.ones(N,)*config.agent['para_loc_dist'][2]
                         para_loc=np.random.uniform(low=low,high=high)
-                    elif config.setting['para_loc_dist'][0]=='Dirichlet':
-                        alpha=[config.setting['para_loc_dist'][1]]*N
+                    elif config.agent['para_loc_dist'][0]=='Dirichlet':
+                        alpha=[config.agent['para_loc_dist'][1]]*N
                         H = np.random.rand()
                         para_loc = H*np.random.dirichlet(alpha)
-                    elif config.setting['para_loc_dist'][0]=='linear':
-                        end_point= np.random.rand()*config.setting['para_loc_dist'][1]
+                    elif config.agent['para_loc_dist'][0]=='linear':
+                        end_point= np.random.rand()*config.agent['para_loc_dist'][1]
                         para_loc = np.ones(N,)*end_point/N
+                    elif config.agent['para_loc_dist'][0]=='Beta':
+                        a=np.ones(N,)*config.agent['para_loc_dist'][1]
+                        b=np.ones(N,)*config.agent['para_loc_dist'][2]
+                        para_loc=np.random.beta(a,b)
+                        print("para_loc=",para_loc)
                     
-                    config.setting['para_loc']=list(para_loc)
+                    Agent.para_loc=para_loc
             
             if type(config.agent['para_shape'])==str:
-                if config.setting['para_shape']=='random':
-                    if config.setting['para_shape'][0]=='shape':
-                        low=np.ones(N,)*config.setting['para_shape_dist'][1]
-                        high=np.ones(N,)*config.setting['para_shape_dist'][2]
+                if config.agent['para_shape']=='random':
+                    if config.agent['para_shape_dist'][0]=='Uniform':
+                        low=np.ones(N,)*config.agent['para_shape_dist'][1]
+                        high=np.ones(N,)*config.agent['para_shape_dist'][2]
                         para_shape=np.random.uniform(low=low,high=high)
+                    elif config.agent['para_shape_dist'][0]=='Gamma':
+                        shape=np.ones(N,)*config.agent['para_shape_dist'][1]
+                        rate=np.ones(N,)*config.agent['para_shape_dist'][2]
+                        para_shape=np.random.gamma(shape=shape,scale=1/rate)
+                        print("para_shape=",para_shape)
+                    elif config.agent['para_shape_dist'][0] == 'LogNormal':
+                        median = config.agent['para_shape_dist'][1]
+                        sigma = config.agent['para_shape_dist'][2]
 
-                    config.setting['para_shape']=list(para_shape)
+                        mean = np.log(median)
+
+                        para_shape = np.random.lognormal(
+                            mean=mean,
+                            sigma=sigma,
+                            size=N)
+                        print("para_shape=",para_shape)
+
+                    Agent.para_shape=para_shape
             
-            Agent=hydra.utils.instantiate(config.agent)
+            
             Agent_model=hydra.utils.instantiate(config.model,num_agent=N)
             Policy=hydra.utils.instantiate(config.policy,model=Agent_model)
             Setting=hydra.utils.instantiate(config.setting,

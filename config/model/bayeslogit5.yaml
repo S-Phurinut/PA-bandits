@@ -1,0 +1,13 @@
+_target_ : model.BayesLogit.BayesLogit
+name : bayes-logit
+fitting_appr : 5
+buffer : 0
+loc_prior : ["uniform",0,1]
+shape_prior : ["exponential",5]
+
+#For pymc packages
+pymc_draws : 200
+pymc_tune : 200
+pymc_target_accept : 0.9
+pymc_cores : 4
+pymc_chains : 4

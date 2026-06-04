@@ -72,6 +72,8 @@ class gEU_Gibbs_Monotone(): #EU with agent approx model
                 self.num_cost_learning=math.ceil(np.log(info['max_round']))
             elif self.num_cost_learning=='T1/2': 
                 self.num_cost_learning=math.ceil(np.sqrt(info['max_round']))
+            elif self.num_cost_learning=='KlogT': 
+                self.num_cost_learning=math.ceil(self.player.num_agent*np.log(info['max_round']))
             
             
             if self.cost_alg=="uniformly-space":
@@ -96,16 +98,25 @@ class gEU_Gibbs_Monotone(): #EU with agent approx model
             
         else:
             self.reset=False
-            if info['curr_round']>1 and self.is_model_known==False:
+            if info['curr_round']>1 and self.is_model_known==False and self.need_model_training==True:
                 train_model=False
                 if type(self.alg['model_training_appr'])==int:
-                    if info['curr_round']-1%self.alg['model_training_appr']==0:
+                    if (info['curr_round']-1)%self.alg['model_training_appr']==0 or info['curr_round']<=self.alg['model_training_max_round_1step'] :
                         train_model=True
                 else:
                     if self.alg['model_training_appr']=='once' and self.is_model_training_done==False : #and self.is_cost_learning_done==True:
                         train_model=True
                     elif self.alg['model_training_appr']=='T':
                         train_model=True
+                    elif self.alg['model_training_appr']=="adaptive-log10":
+                        refit_step=max(int(10**(math.floor(np.log10(info['curr_round']-1)))),1)
+                        if info['curr_round']%min(refit_step,self.alg['model_training_max_round_step'])==0  or info['curr_round']<=self.alg['model_training_max_round_1step'] :
+                            train_model=True
+                        else:
+                            train_model=False
+                
+                if info['curr_round']<=self.num_cost_learning:
+                    train_model=True
 
                 if train_model:
                      self.alg['model'].fit(X=self.player.incentive_array[:(info['curr_round']-1),:],Y=self.player.agent_response_array[:(info['curr_round']-1),:])
@@ -132,7 +143,7 @@ class gEU_Gibbs_Monotone(): #EU with agent approx model
                 best_cost=np.ones((self.player.num_agent,))*self.cost_list[int(info['curr_round']-1)]
             elif self.cost_alg=="approx-D-optimal":
                 best_cost=np.clip(self.approx_D_optimal(info['curr_round']),0,1)
-                self.need_model_training=False
+                self.need_model_training=True
                 print("D-optimal next point=",best_cost)
 
             if info['curr_round']==self.num_cost_learning:

@@ -20,4 +20,4 @@ init_sweep_weighted_LS : variance
 
 kl_lambda : 0.05
 kl_mode : forward
-kl_decay : null #1/sqrt_t
+kl_decay : 1/sqrt_t
